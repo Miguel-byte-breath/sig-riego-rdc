@@ -235,11 +235,14 @@ async function generarPlanOro() {
     
     const volV = parseFloat(document.getElementById('volDisponible').value) || 0;
     const btn = document.querySelector(".btn-gold");
-    const statusDatos = document.getElementById('statusDatos');
+    const statusDatos = document.getElementById('statusDatos'); // El mensaje de la sección 1
     
     btn.disabled = true;
 
-    // Límite de seguridad: probamos las 5 estaciones más próximas
+    // Reiniciamos el mensaje de la sección 1 para que el usuario sepa que estamos trabajando
+    statusDatos.style.color = "#64748b";
+    statusDatos.innerHTML = "⏳ Validando disponibilidad de datos...";
+
     const limiteIntentos = Math.min(5, estacionesCercanas.length);
 
     for (let i = 0; i < limiteIntentos; i++) {
@@ -255,19 +258,19 @@ async function generarPlanOro() {
             const response = await fetch(urlAemet);
             const metadata = await response.json();
 
-            if (metadata.estado !== 200) throw new Error("Sin disponibilidad de datos");
+            if (metadata.estado !== 200) throw new Error("Sin disponibilidad");
 
             const dataResponse = await fetch(metadata.datos);
             const aemet = await dataResponse.json(); 
 
-            if (!Array.isArray(aemet) || aemet.length === 0) throw new Error("Serie de datos vacía");
+            if (!Array.isArray(aemet) || aemet.length === 0) throw new Error("Serie vacía");
 
-            // --- ÉXITO: VALIDACIÓN Y ACTUALIZACIÓN DE CONFIANZA ---
+            // --- ÉXITO: ACTUALIZACIÓN INMEDIATA DE LA SECCIÓN 1 ---
             statusDatos.innerHTML = `✅ <b>Datos validados de:</b> ${estacionActual.nombre} (${fmtNum(estacionActual.distanciaRealKm, 1)} km)`;
             statusDatos.style.color = "#16a34a";
             statusDatos.style.fontWeight = "600";
 
-            // LÓGICA AGRONÓMICA (Inyectada de tu código original)
+            // LÓGICA AGRONÓMICA (Tus cálculos se mantienen intactos aquí)
             const cultivo = cultivosData[document.getElementById('selectCultivo').value];
             const fIni = new Date(document.getElementById('cicloIni').value);
             const fFin = new Date(document.getElementById('cicloFin').value);
@@ -278,7 +281,6 @@ async function generarPlanOro() {
                 const m = parseInt(d.fecha.split('-')[1]);
                 let valEto = parseFloat(String(d.eto_mes || d.evap_mes || d.e || "0").replace(',','.'));
                 let valP = parseFloat(String(d.p_mes || d.precipitacion || "0").replace(',','.')); 
-                
                 if(m < 13) { 
                     if(valEto >= 0) medias[m].sumEto += valEto;
                     if(valP >= 0) medias[m].sumP += valP;
@@ -287,40 +289,33 @@ async function generarPlanOro() {
             });
 
             let mesesCiclo = [], sumaNHn = 0, iter = new Date(fIni.getFullYear(), fIni.getMonth(), 1);
-            
             while (iter <= fFin) {
                 const mIdx = iter.getMonth(), anio = iter.getFullYear();
                 const diasMesTotal = new Date(anio, mIdx + 1, 0).getDate();
                 const rIni = new Date(Math.max(iter, fIni)), rFin = new Date(Math.min(new Date(anio, mIdx, diasMesTotal), fFin));
                 const nDiasActivos = Math.max(0, (rFin - rIni) / (86400000) + 1);
-
                 if (nDiasActivos > 0) {
                     const etoMensualAvg = medias[mIdx+1].count > 0 ? (medias[mIdx+1].sumEto / medias[mIdx+1].count) : 0;
                     const pMensualAvg = medias[mIdx+1].count > 0 ? (medias[mIdx+1].sumP / medias[mIdx+1].count) : 0;
-
                     const etoDiaria = etoMensualAvg / diasMesTotal;
                     const kc = cultivo.kc[mIdx+1] || 0;
                     const etcDiaria = etoDiaria * kc;
                     const etcMesTotal = etcDiaria * nDiasActivos; 
-
                     let peMensualTotal = (pMensualAvg < 70) ? (0.6 * pMensualAvg) - 10 : (0.8 * pMensualAvg) - 24;
                     if (peMensualTotal < 0) peMensualTotal = 0;
-
                     const peActiva = (peMensualTotal / diasMesTotal) * nDiasActivos;
                     const nhn_m3 = Math.max(0, etcMesTotal - peActiva) * 10;
-
                     sumaNHn += nhn_m3;
-                    const etiquetaBonita = `${nombresMesesCortos[mIdx]}-${String(anio).slice(-2)}`;
-
                     mesesCiclo.push({ 
-                        etiqueta: etiquetaBonita, mesNum: mIdx+1, anio: anio, diasActivos: nDiasActivos,
+                        etiqueta: `${nombresMesesCortos[mIdx]}-${String(anio).slice(-2)}`, 
+                        mesNum: mIdx+1, anio: anio, diasActivos: nDiasActivos,
                         etoDiaria: etoDiaria, kc: kc, etcMm: etcMesTotal, pMm: pMensualAvg, peMm: peActiva, nhn_m3: nhn_m3 
                     });
                 }
                 iter.setMonth(iter.getMonth() + 1);
             }
 
-            // RENDERIZADO DE TABLA (Inyectada de tu código original)
+            // RENDERIZADO (Tabla y Gráficos)
             const cuerpo = document.getElementById('cuerpoTabla');
             cuerpo.innerHTML = ""; exportDataMensual = [];
             let labels = [], dataPe = [], dataIdeal = [], dataAjustada = [];
@@ -331,12 +326,10 @@ async function generarPlanOro() {
                 sumaAsignada += m3Asignado;
                 sumaP += m.pMm; sumaPe += m.peMm;
                 m.m3AsignadoFinal = m3Asignado;
-                
                 labels.push(m.etiqueta);
                 dataPe.push(Math.round(m.peMm * 10));
                 dataIdeal.push(Math.round(m.nhn_m3));
                 dataAjustada.push(Math.round(m3Asignado));
-                
                 cuerpo.innerHTML += `<tr>
                     <td style="text-transform: capitalize; font-weight:600;">${m.etiqueta}</td>
                     <td>${fmtNum(m.diasActivos)}</td>
@@ -348,7 +341,6 @@ async function generarPlanOro() {
                     <td class="col-ideal">${fmtNum(m.nhn_m3)}</td>
                     <td class="col-ajustada">${fmtNum(m3Asignado)}</td>
                 </tr>`;
-                
                 exportDataMensual.push({ 
                     "Mes": m.etiqueta, "ETc (mm)": fmtNum(m.etcMm, 2), "P. Efectiva (mm)": fmtNum(m.peMm, 2), 
                     "Nec. Neta (m3/ha)": Math.round(m.nhn_m3), "Asignado (m3/ha)": Math.round(m3Asignado) 
@@ -376,15 +368,13 @@ async function generarPlanOro() {
             });
 
             calcularSemanasCorrelativas(mesesCiclo, fIni, fFin);
-            
-            // FINALIZACIÓN EXITOSA: Salimos del bucle de intentos
             break; 
 
         } catch (err) {
-            console.warn(`Estación ${estacionesCercanas[i].nombre} fallida: ${err.message}`);
+            console.warn(`Estación ${estacionesCercanas[i].nombre} fallida.`);
             if(i === limiteIntentos - 1) {
-                alert("❌ No se han encontrado datos climáticos válidos en las 5 estaciones más cercanas.");
-                statusDatos.innerHTML = "⚠️ Error: No hay datos climáticos disponibles en el entorno.";
+                alert("❌ No se han encontrado datos en las 5 estaciones más cercanas.");
+                statusDatos.innerHTML = "⚠️ No hay datos disponibles en el entorno.";
                 statusDatos.style.color = "#e11d48";
             }
         }
