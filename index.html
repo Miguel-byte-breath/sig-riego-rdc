@@ -235,13 +235,16 @@ async function generarPlanOro() {
     
     const volV = parseFloat(document.getElementById('volDisponible').value) || 0;
     const btn = document.querySelector(".btn-gold");
-    const statusDatos = document.getElementById('statusDatos'); // El mensaje de la sección 1
+    const statusDatos = document.getElementById('statusDatos'); 
     
     btn.disabled = true;
 
-    // Reiniciamos el mensaje de la sección 1 para que el usuario sepa que estamos trabajando
-    statusDatos.style.color = "#64748b";
-    statusDatos.innerHTML = "⏳ Validando disponibilidad de datos...";
+    // --- MEJORA: Forzamos el refresco visual del mensaje ---
+    statusDatos.style.color = "#ca8a04"; // Color ámbar para "proceso"
+    statusDatos.innerHTML = "⏳ Validando disponibilidad de datos en AEMET...";
+    
+    // Este pequeño truco permite que el navegador pinte el texto antes de bloquearse con la API
+    await new Promise(resolve => setTimeout(resolve, 50)); 
 
     const limiteIntentos = Math.min(5, estacionesCercanas.length);
 
@@ -265,12 +268,12 @@ async function generarPlanOro() {
 
             if (!Array.isArray(aemet) || aemet.length === 0) throw new Error("Serie vacía");
 
-            // --- ÉXITO: ACTUALIZACIÓN INMEDIATA DE LA SECCIÓN 1 ---
+            // --- ÉXITO: ACTUALIZACIÓN DEFINITIVA ---
             statusDatos.innerHTML = `✅ <b>Datos validados de:</b> ${estacionActual.nombre} (${fmtNum(estacionActual.distanciaRealKm, 1)} km)`;
             statusDatos.style.color = "#16a34a";
             statusDatos.style.fontWeight = "600";
 
-            // LÓGICA AGRONÓMICA (Tus cálculos se mantienen intactos aquí)
+            // LÓGICA AGRONÓMICA
             const cultivo = cultivosData[document.getElementById('selectCultivo').value];
             const fIni = new Date(document.getElementById('cicloIni').value);
             const fFin = new Date(document.getElementById('cicloFin').value);
@@ -315,7 +318,7 @@ async function generarPlanOro() {
                 iter.setMonth(iter.getMonth() + 1);
             }
 
-            // RENDERIZADO (Tabla y Gráficos)
+            // RENDERIZADO
             const cuerpo = document.getElementById('cuerpoTabla');
             cuerpo.innerHTML = ""; exportDataMensual = [];
             let labels = [], dataPe = [], dataIdeal = [], dataAjustada = [];
@@ -373,7 +376,7 @@ async function generarPlanOro() {
         } catch (err) {
             console.warn(`Estación ${estacionesCercanas[i].nombre} fallida.`);
             if(i === limiteIntentos - 1) {
-                alert("❌ No se han encontrado datos en las 5 estaciones más cercanas.");
+                alert("❌ No se han encontrado datos en las estaciones cercanas.");
                 statusDatos.innerHTML = "⚠️ No hay datos disponibles en el entorno.";
                 statusDatos.style.color = "#e11d48";
             }
