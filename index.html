@@ -95,6 +95,23 @@
             <div><label class="input-label">Inicio Ciclo</label><input type="date" id="cicloIni" value="2026-03-01" class="main-input"></div>
             <div><label class="input-label">Fin Ciclo</label><input type="date" id="cicloFin" value="2026-10-31" class="main-input"></div>
             <div><label class="input-label">Recursos (m³/ha)</label><input type="number" id="volDisponible" value="4000" class="main-input"></div>
+            <div id="panelEstrategiaRDC" class="card" style="display:none; border: 2px solid #e2e8f0; margin-top: 20px; background: #f8fafc; padding: 15px; border-radius: 12px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);">
+    <div style="font-weight: 800; color: #1e293b; margin-bottom: 15px; font-size: 0.9rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+        🎯 ESTRATEGIA DE RIEGO DEFICITARIO (RDC)
+    </div>
+    
+    <div id="gridMesesRDC" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 12px;">
+        </div>
+
+    <div style="margin-top: 20px; padding-top: 15px; border-top: 2px solid #e2e8f0; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div style="font-weight: 700; font-size: 0.9rem; color: #475569;">
+            Consumo Planificado: <span id="labelConsumoRDC" style="color: #2563eb; font-size: 1.1rem;">0</span> / <span id="labelMaxDisponible" style="color: #1e293b;">0</span> m³/ha
+        </div>
+        <div id="statusRDC" style="font-weight: 800; font-size: 0.85rem; padding: 6px 12px; border-radius: 20px; background: white; border: 1px solid #e2e8f0;">
+            Esperando configuración...
+        </div>
+    </div>
+</div>
         </div>
 <div id="panelRDC" class="card" style="display:none; background: #fffbeb; border: 1px solid #fde68a; margin-top: 15px; width: 100%; box-sizing: border-box;">
     <div style="font-weight: 800; color: #92400e; margin-bottom: 12px; font-size: 0.85rem; display: flex; align-items: center; gap: 8px; text-transform: uppercase;">
@@ -564,6 +581,60 @@ function renderizarControlesRDC(meses) {
         });
     });
 }    
+    
 </script>
-</body>
+</body>// Función para crear y gestionar los controles de RDC
+function inicializarInterfazRDC(meses) {
+    const contenedor = document.getElementById('gridMesesRDC');
+    const panel = document.getElementById('panelEstrategiaRDC');
+    const volMax = parseFloat(document.getElementById('volDisponible').value) || 0;
+    
+    // Mostramos el panel y actualizamos el tope disponible
+    panel.style.display = "block";
+    document.getElementById('labelMaxDisponible').innerText = fmtNum(volMax);
+    contenedor.innerHTML = "";
+
+    // Generamos un input por cada mes del ciclo
+    meses.forEach((m, i) => {
+        contenedor.innerHTML += `
+            <div style="background: white; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
+                <label style="display: block; font-size: 0.7rem; font-weight: 800; color: #64748b; margin-bottom: 8px; text-transform: uppercase;">${m.etiqueta}</label>
+                <div style="display: flex; align-items: center; justify-content: center; gap: 4px;">
+                    <input type="number" class="pct-rdc-input" data-idx="${i}" value="100" min="0" max="100" 
+                        style="width: 55px; border: 1px solid #94a3b8; border-radius: 4px; padding: 4px; text-align: center; font-weight: 800; color: #1e293b;">
+                    <span style="font-size: 0.8rem; font-weight: 700; color: #475569;">%</span>
+                </div>
+                <div style="font-size: 0.65rem; color: #94a3b8; margin-top: 5px; border-top: 1px solid #f1f5f9; pt-2">Max: ${fmtNum(m.nhn_m3)}</div>
+            </div>`;
+    });
+
+    // Lógica del "Chivato" en tiempo real
+    const inputs = document.querySelectorAll('.pct-rdc-input');
+    const actualizarSuma = () => {
+        let acumuladoRDC = 0;
+        inputs.forEach(inp => {
+            const idx = inp.dataset.idx;
+            const pct = (parseFloat(inp.value) || 0) / 100;
+            acumuladoRDC += meses[idx].nhn_m3 * pct;
+        });
+
+        const labelConsumo = document.getElementById('labelConsumoRDC');
+        const status = document.getElementById('statusRDC');
+        labelConsumo.innerText = fmtNum(acumuladoRDC);
+
+        if (acumuladoRDC > volMax) {
+            status.innerHTML = `<span style="color: #dc2626;">⚠️ EXCESO: -${fmtNum(acumuladoRDC - volMax)} m³/ha</span>`;
+            labelConsumo.style.color = "#dc2626";
+        } else {
+            status.innerHTML = `<span style="color: #16a34a;">✅ ESTRATEGIA VIABLE</span>`;
+            labelConsumo.style.color = "#2563eb";
+        }
+    };
+
+    // Escuchamos cualquier cambio en los inputs
+    inputs.forEach(input => input.addEventListener('input', actualizarSuma));
+    
+    // Calculamos el estado inicial (al 100%)
+    actualizarSuma();
+}
 </html>
