@@ -285,48 +285,37 @@ async function generarPlanOro() {
     if(!estacionSeleccionadaId) return alert("⚠️ La estación aún no ha sido validada.");
     const volV = parseFloat(document.getElementById('volDisponible').value) || 0;
     
-    // --- LÓGICA DE MEMORIA (CACHÉ) ---
     let aemet;
     if (window.datosCacheAemet) {
-        // Si ya tenemos los datos, los usamos directamente
         aemet = window.datosCacheAemet;
     } else {
-        // Si no hay caché, solicitamos a AEMET (solo la primera vez)
         const btn = document.querySelector(".btn-gold");
         btn.disabled = true; btn.innerText = "⏳ Consultando AEMET (3 años)...";
-        
         try {
             const anioFin = new Date().getFullYear() - 1;
-            const anioIni = anioFin - 2;
-            const urlAemet = `https://opendata.aemet.es/opendata/api/valores/climatologicos/mensualesanuales/datos/anioini/${anioIni}/aniofin/${anioFin}/estacion/${estacionSeleccionadaId}?api_key=${API_KEY}`;
-            
+            const urlAemet = `https://opendata.aemet.es/opendata/api/valores/climatologicos/mensualesanuales/datos/anioini/${anioFin-2}/aniofin/${anioFin}/estacion/${estacionSeleccionadaId}?api_key=${API_KEY}`;
             const response = await fetch(urlAemet);
             const metadata = await response.json();
             const dataResponse = await fetch(metadata.datos);
             aemet = await dataResponse.json(); 
-            
-            // Guardamos el resultado en la variable global
             window.datosCacheAemet = aemet; 
-            
         } catch (err) {
             alert("❌ Error en API: " + err.message);
-            btn.disabled = false; btn.innerText = "✨ Calcular Balance Completo (Vía AEMET)";
             return;
         } finally {
             btn.disabled = false; btn.innerText = "✨ Calcular Balance Completo (Vía AEMET)";
         }
     }
 
-    // --- CÁLCULOS AGRONÓMICOS (TU LÓGICA ORIGINAL) ---
+    // --- LÓGICA AGRONÓMICA ---
     const cultivo = cultivosData[document.getElementById('selectCultivo').value];
     const fIni = new Date(document.getElementById('cicloIni').value);
     const fFin = new Date(document.getElementById('cicloFin').value);
-
     const medias = Array(13).fill(0).map(() => ({ sumEto: 0, sumP: 0, count: 0 }));
     
     aemet.forEach(d => {
         const m = parseInt(d.fecha.split('-')[1]);
-        let valEto = parseFloat(String(d.eto_mes || d.evap_mes || d.e || "0").replace(',','.'));
+        let valEto = parseFloat(String(d.eto_mes || d.evap_mes || "0").replace(',','.'));
         let valP = parseFloat(String(d.p_mes || d.precipitacion || "0").replace(',','.')); 
         if(m < 13) { 
             if(valEto >= 0) medias[m].sumEto += valEto;
@@ -341,94 +330,75 @@ async function generarPlanOro() {
         const diasMesTotal = new Date(anio, mIdx + 1, 0).getDate();
         const rIni = new Date(Math.max(iter, fIni)), rFin = new Date(Math.min(new Date(anio, mIdx, diasMesTotal), fFin));
         const nDiasActivos = Math.max(0, (rFin - rIni) / (86400000) + 1);
-
         if (nDiasActivos > 0) {
-            const etoMensualAvg = medias[mIdx+1].count > 0 ? (medias[mIdx+1].sumEto / medias[mIdx+1].count) : 0;
-            const pMensualAvg = medias[mIdx+1].count > 0 ? (medias[mIdx+1].sumP / medias[mIdx+1].count) : 0;
-            const etoDiaria = etoMensualAvg / diasMesTotal;
+            const etoM = medias[mIdx+1].count > 0 ? (medias[mIdx+1].sumEto / medias[mIdx+1].count) : 0;
+            const pM = medias[mIdx+1].count > 0 ? (medias[mIdx+1].sumP / medias[mIdx+1].count) : 0;
+            const etoD = etoM / diasMesTotal;
             const kc = cultivo.kc[mIdx+1] || 0;
-            const etcMesTotal = (etoDiaria * kc) * nDiasActivos; 
-            let peMensualTotal = (pMensualAvg < 70) ? (0.6 * pMensualAvg) - 10 : (0.8 * pMensualAvg) - 24;
-            if (peMensualTotal < 0) peMensualTotal = 0;
-            const peActiva = (peMensualTotal / diasMesTotal) * nDiasActivos;
-            const nhn_m3 = Math.max(0, etcMesTotal - peActiva) * 10;
-            sumaNHn += nhn_m3;
-            mesesCiclo.push({ 
-                etiqueta: `${nombresMesesCortos[mIdx]}-${String(anio).slice(-2)}`, mesNum: mIdx+1, anio, diasActivos: nDiasActivos,
-                etoDiaria, kc, etcMm: etcMesTotal, pMm: pMensualAvg, peMm: peActiva, nhn_m3 
-            });
+            const etcMes = (etoD * kc) * nDiasActivos; 
+            let peM = (pM < 70) ? (0.6 * pM) - 10 : (0.8 * pM) - 24;
+            const peA = (Math.max(0, peM) / diasMesTotal) * nDiasActivos;
+            const nhn = Math.max(0, etcMes - peA) * 10;
+            sumaNHn += nhn;
+            mesesCiclo.push({ etiqueta: `${nombresMesesCortos[mIdx]}-${String(anio).slice(-2)}`, mesNum: mIdx+1, anio, diasActivos: nDiasActivos, etoD, kc, etcMes, pM, peA, nhn });
         }
         iter.setMonth(iter.getMonth() + 1);
     }
 
-    // --- RENDERIZADO Y ACTUALIZACIÓN DE INTERFAZ ---
+    // --- RENDERIZADO TABLA Y RDC ---
     const cuerpo = document.getElementById('cuerpoTabla');
     cuerpo.innerHTML = ""; exportDataMensual = [];
-    let labels = [], dataPe = [], dataIdeal = [], dataAjustada = [], dataRDC = [], sumaAsignada = 0, sumaTotalRDC = 0;
+    let labels = [], dIdeal = [], dRDC = [], sAsig = 0, sRDC = 0, mapaDiarioRDC = {};
+    const inputs = document.querySelectorAll('.rdc-input');
 
-    const todosInputsRDC = document.querySelectorAll('.pct-rdc-input');
-
-    mesesCiclo.forEach((m, index) => {
-        const m3Asignado = sumaNHn > 0 ? (m.nhn_m3 / sumaNHn) * volV : 0;
-        sumaAsignada += m3Asignado;
-        const pctRDC = todosInputsRDC[index] ? (parseFloat(todosInputsRDC[index].value) || 0) / 100 : 1;
-        const valorRDC = m.nhn_m3 * pctRDC;
-        sumaTotalRDC += valorRDC;
+    mesesCiclo.forEach((m, i) => {
+        const asig = sumaNHn > 0 ? (m.nhn / sumaNHn) * volV : 0;
+        const pct = inputs[i] ? (parseFloat(inputs[i].value) || 0) / 100 : 1;
+        const vRDC = m.nhn * pct;
+        sAsig += asig; sRDC += vRDC;
         
         labels.push(m.etiqueta);
-        dataPe.push(Math.round(m.peMm * 10));
-        dataIdeal.push(Math.round(m.nhn_m3));
-        dataAjustada.push(Math.round(m3Asignado));
-        dataRDC.push(Math.round(valorRDC));
-        
+        dIdeal.push(Math.round(m.nhn)); dRDC.push(Math.round(vRDC));
+
+        const valD = vRDC / m.diasActivos;
+        let dI = new Date(m.anio, m.mesNum - 1, 1);
+        let dF = new Date(m.anio, m.mesNum, 0);
+        while(dI <= dF) {
+            if(dI >= fIni && dI <= fFin) mapaDiarioRDC[dI.toISOString().split('T')[0]] = valD;
+            dI.setDate(dI.getDate() + 1);
+        }
+
         cuerpo.innerHTML += `<tr>
-            <td style="text-transform: capitalize; font-weight:600;">${m.etiqueta}</td>
-            <td>${fmtNum(m.diasActivos)}</td>
-            <td class="col-climate">${fmtNum(m.etoDiaria, 2)}</td>
-            <td class="col-climate">${fmtNum(m.kc, 2)}</td>
-            <td>${fmtNum(m.etcMm, 1)}</td>
-            <td class="col-rain">${fmtNum(m.pMm, 1)}</td>
-            <td class="col-rain" style="font-weight:bold">${fmtNum(m.peMm, 1)}</td>
-            <td class="col-ideal">${fmtNum(m.nhn_m3)}</td>
-            <td class="col-ajustada">${fmtNum(m3Asignado)}</td>
-            <td style="background: #fffbeb; color: #b45309; font-weight: 800; border-left: 2px solid #fde68a;">${fmtNum(valorRDC)}</td>
+            <td>${m.etiqueta}</td><td>${fmtNum(m.diasActivos)}</td>
+            <td>${fmtNum(m.etoD, 2)}</td><td>${fmtNum(m.kc, 2)}</td><td>${fmtNum(m.etcMes, 1)}</td>
+            <td>${fmtNum(m.pM, 1)}</td><td>${fmtNum(m.peA, 1)}</td><td class="col-ideal">${fmtNum(m.nhn)}</td>
+            <td class="col-ajustada">${fmtNum(asig)}</td><td style="background:#fffbeb; font-weight:800; color:#b45309;">${fmtNum(vRDC)}</td>
         </tr>`;
 
-        exportDataMensual.push({ 
-            "Mes": m.etiqueta, 
-            "Nec. Neta (m3/ha)": Math.round(m.nhn_m3), 
-            "Asignado (m3/ha)": Math.round(m3Asignado), 
-            "RDC (m3/ha)": Math.round(valorRDC) 
-        });
+        exportDataMensual.push({ "Mes": m.etiqueta, "NHn": Math.round(m.nhn), "RDC": Math.round(vRDC) });
     });
 
-    document.getElementById('totalP').innerText = fmtNum(mesesCiclo.reduce((a,b)=>a+b.pMm,0), 1);
-    document.getElementById('totalPe').innerText = fmtNum(mesesCiclo.reduce((a,b)=>a+b.peMm,0), 1);
     document.getElementById('totalIdeal').innerText = fmtNum(sumaNHn);
-    document.getElementById('totalAjustado').innerText = fmtNum(sumaAsignada);
-    document.getElementById('totalRDC').innerText = fmtNum(sumaTotalRDC);
+    document.getElementById('totalAjustado').innerText = fmtNum(sAsig);
+    document.getElementById('totalRDC').innerText = fmtNum(sRDC);
+    document.getElementById('sumaRDC').innerText = fmtNum(sRDC);
     document.getElementById('panelResultados').style.display = "block";
 
-    // Inicializar panel de control RDC si está vacío
-    if(document.getElementById('gridMesesRDC').innerHTML.trim() === "") {
-        inicializarInterfazRDC(mesesCiclo);
-    }
+    if(document.getElementById('controlesRDC').innerHTML.trim() === "") renderizarControlesRDC(mesesCiclo);
 
-    // Actualizar Gráfica
-    if(miGrafica) miGrafica.destroy();
-    miGrafica = new Chart(document.getElementById('graficaDoble').getContext('2d'), {
+    // --- GRÁFICO SECCIÓN 2 ---
+    if(window.miGrafica) window.miGrafica.destroy();
+    window.miGrafica = new Chart(document.getElementById('graficaDoble').getContext('2d'), {
         type: 'bar',
         data: { labels, datasets: [
-            { label: 'P. Efectiva (m³/ha)', data: dataPe, backgroundColor: '#38bdf8' },
-            { label: 'Nec. Neta (m³/ha)', data: dataIdeal, backgroundColor: '#cbd5e1' },
-            { label: 'Asignado (m³/ha)', data: dataAjustada, backgroundColor: '#94a3b8' },
-            { label: 'Estrategia RDC (m³/ha)', data: dataRDC, backgroundColor: '#d97706' }
+            { label: 'Nec. Neta (m³/ha)', data: dIdeal, backgroundColor: '#cbd5e1' },
+            { label: 'Estrategia RDC (m³/ha)', data: dRDC, backgroundColor: '#d97706' }
         ]},
-        options: { responsive: true, maintainAspectRatio: false, plugins: { datalabels: { anchor: 'end', align: 'top', formatter: (val) => val > 0 ? fmtNum(val) : '' } } }
+        options: { responsive: true, maintainAspectRatio: false }
     });
 
-    // Lanzar Cálculo Semanal
-    calcularSemanasCorrelativas(mesesCiclo, fIni, fFin);
+    // --- LANZAR SECCIÓN 3 ---
+    actualizarSeccionSemanalRDC(mapaDiarioRDC, fIni, fFin);
 }
 
 function descargarExcel() {
