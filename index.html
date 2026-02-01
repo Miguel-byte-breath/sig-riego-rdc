@@ -95,8 +95,34 @@
             <div><label class="input-label">Inicio Ciclo</label><input type="date" id="cicloIni" value="2026-03-01" class="main-input"></div>
             <div><label class="input-label">Fin Ciclo</label><input type="date" id="cicloFin" value="2026-10-31" class="main-input"></div>
             <div><label class="input-label">Recursos (m³/ha)</label><input type="number" id="volDisponible" value="4000" class="main-input"></div>
-            <div id="panelEstrategiaRDC" class="card" style="display:none; border: 2px solid #e2e8f0; margin-top: 20px; background: #f8fafc; padding: 15px; border-radius: 12px; box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);">
-    <div style="font-weight: 800; color: #1e293b; margin-bottom: 15px; font-size: 0.9rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; display: flex; align-items: center; gap: 8px;">
+        <div id="panelEstrategiaRDC" class="card" style="display:none; border: 2px solid #3b82f6; margin-top: 20px; background: #f0f9ff; padding: 20px; width: 100%; box-sizing: border-box; clear: both;">
+    <div style="font-weight: 800; color: #1e3a8a; margin-bottom: 15px; font-size: 1rem; border-bottom: 2px solid #bae6fd; padding-bottom: 10px; display: flex; align-items: center; gap: 10px;">
+        🎯 ESTRATEGIA DE RIEGO DEFICITARIO (RDC): Ajuste Mensual sobre NHn
+    </div>
+    
+    <div id="gridMesesRDC" style="display: flex; flex-direction: row; flex-wrap: wrap; gap: 15px; justify-content: flex-start;">
+        </div>
+
+    <div style="margin-top: 20px; padding: 15px; background: white; border-radius: 12px; border: 1px solid #bae6fd; display: flex; justify-content: space-between; align-items: center;">
+        <div style="font-weight: 700; font-size: 1rem; color: #1e293b;">
+            Consumo Planificado RDC: <span id="labelConsumoRDC" style="color: #2563eb; font-size: 1.2rem;">0</span> / <span id="labelMaxDisponible">0</span> m³/ha
+        </div>
+        <div id="statusRDC" style="font-weight: 800; font-size: 0.9rem; padding: 8px 16px; border-radius: 8px;"></div>
+    </div>
+</div>
+        🎯 ESTRATEGIA DE RIEGO DEFICITARIO (RDC): Ajuste Mensual sobre NHn
+    </div>
+    
+    <div id="gridMesesRDC" style="display: flex; flex-direction: row; flex-wrap: wrap; gap: 15px; justify-content: flex-start;">
+        </div>
+
+    <div style="margin-top: 20px; padding: 15px; background: white; border-radius: 12px; border: 1px solid #bae6fd; display: flex; justify-content: space-between; align-items: center;">
+        <div style="font-weight: 700; font-size: 1rem; color: #1e293b;">
+            Consumo Planificado RDC: <span id="labelConsumoRDC" style="color: #2563eb; font-size: 1.2rem;">0</span> / <span id="labelMaxDisponible">0</span> m³/ha
+        </div>
+        <div id="statusRDC" style="font-weight: 800; font-size: 0.9rem; padding: 8px 16px; border-radius: 8px;"></div>
+    </div>
+</div>
         🎯 ESTRATEGIA DE RIEGO DEFICITARIO (RDC)
     </div>
     
@@ -252,11 +278,13 @@ async function encontrarMasCercana() {
     } catch (e) { res.innerHTML = "❌ Error al conectar con AEMET."; }
 }
 
+// --- FUNCIÓN 1: GENERAR PLAN ORO (ACTUALIZADA CON LÓGICA RDC REACTIVA) ---
 async function generarPlanOro() {
     if(!estacionSeleccionadaId) return alert("⚠️ La estación aún no ha sido validada.");
     const volV = parseFloat(document.getElementById('volDisponible').value) || 0;
     const btn = document.querySelector(".btn-gold");
     btn.disabled = true; btn.innerText = "⏳ Procesando...";
+    
     try {
         const anioFin = new Date().getFullYear() - 1;
         const anioIni = anioFin - 2;
@@ -304,6 +332,7 @@ async function generarPlanOro() {
             iter.setMonth(iter.getMonth() + 1);
         }
 
+        // --- PANEL RDC: Se inicializa solo si está vacío ---
         if (document.getElementById('gridMesesRDC').innerHTML.trim() === "") {
             inicializarInterfazRDC(mesesCiclo);
         }
@@ -312,11 +341,14 @@ async function generarPlanOro() {
         cuerpo.innerHTML = ""; exportDataMensual = [];
         let labels = [], dataPe = [], dataIdeal = [], dataAjustada = [], dataRDC = [], sumaAsignada = 0, sumaP = 0, sumaPe = 0, sumaTotalRDC = 0;
 
+        const inputsRDC = document.querySelectorAll('.pct-rdc-input');
+
         mesesCiclo.forEach((m, index) => {
             const m3Asignado = sumaNHn > 0 ? (m.nhn_m3 / sumaNHn) * volV : 0;
             sumaAsignada += m3Asignado; sumaP += m.pMm; sumaPe += m.peMm;
-            const todosInputsRDC = document.querySelectorAll('.pct-rdc-input');
-            const pctRDC = todosInputsRDC[index] ? (parseFloat(todosInputsRDC[index].value) || 0) / 100 : 1;
+            
+            // Lógica RDC: Lee el % del input si existe, si no 100%
+            const pctRDC = inputsRDC[index] ? (parseFloat(inputsRDC[index].value) || 0) / 100 : 1;
             const valorRDC = m.nhn_m3 * pctRDC;
             sumaTotalRDC += valorRDC;
             
@@ -326,8 +358,25 @@ async function generarPlanOro() {
             dataAjustada.push(Math.round(m3Asignado));
             dataRDC.push(Math.round(valorRDC));
             
-            cuerpo.innerHTML += `<tr><td style="text-transform: capitalize; font-weight:600;">${m.etiqueta}</td><td>${fmtNum(m.diasActivos)}</td><td class="col-climate">${fmtNum(m.etoDiaria, 2)}</td><td class="col-climate">${fmtNum(m.kc, 2)}</td><td>${fmtNum(m.etcMm, 1)}</td><td class="col-rain">${fmtNum(m.pMm, 1)}</td><td class="col-rain" style="font-weight:bold">${fmtNum(m.peMm, 1)}</td><td class="col-ideal">${fmtNum(m.nhn_m3)}</td><td class="col-ajustada">${fmtNum(m3Asignado)}</td><td style="background: #fffbeb; color: #b45309; font-weight: 800; border-left: 2px solid #fde68a;">${fmtNum(valorRDC)}</td></tr>`;
-            exportDataMensual.push({ "Mes": m.etiqueta, "Nec. Neta (m3/ha)": Math.round(m.nhn_m3), "Asignado (m3/ha)": Math.round(m3Asignado), "RDC (m3/ha)": Math.round(valorRDC) });
+            cuerpo.innerHTML += `<tr>
+                <td style="text-transform: capitalize; font-weight:600;">${m.etiqueta}</td>
+                <td>${fmtNum(m.diasActivos)}</td>
+                <td class="col-climate">${fmtNum(m.etoDiaria, 2)}</td>
+                <td class="col-climate">${fmtNum(m.kc, 2)}</td>
+                <td>${fmtNum(m.etcMm, 1)}</td>
+                <td class="col-rain">${fmtNum(m.pMm, 1)}</td>
+                <td class="col-rain" style="font-weight:bold">${fmtNum(m.peMm, 1)}</td>
+                <td class="col-ideal">${fmtNum(m.nhn_m3)}</td>
+                <td class="col-ajustada">${fmtNum(m3Asignado)}</td>
+                <td style="background: #fffbeb; color: #b45309; font-weight: 800; border-left: 2px solid #fde68a;">${fmtNum(valorRDC)}</td>
+            </tr>`;
+            
+            exportDataMensual.push({ 
+                "Mes": m.etiqueta, 
+                "Nec. Neta (m3/ha)": Math.round(m.nhn_m3), 
+                "Asignado (m3/ha)": Math.round(m3Asignado), 
+                "RDC (m3/ha)": Math.round(valorRDC) 
+            });
         });
 
         document.getElementById('totalP').innerText = fmtNum(sumaP, 1);
@@ -346,33 +395,111 @@ async function generarPlanOro() {
                 { label: 'Asignado (m³/ha)', data: dataAjustada, backgroundColor: '#94a3b8' },
                 { label: 'Estrategia RDC (m³/ha)', data: dataRDC, backgroundColor: '#d97706' }
             ]},
-            options: { responsive: true, maintainAspectRatio: false, layout: { padding: { top: 30 } }, plugins: { datalabels: { anchor: 'end', align: 'top', font: { weight: 'bold', size: 11 }, formatter: (val) => val > 0 ? fmtNum(val) : '' } }, scales: { y: { beginAtZero: true, grid: { display: false } }, x: { grid: { display: false } } } }
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                layout: { padding: { top: 30 } }, 
+                plugins: { 
+                    datalabels: { anchor: 'end', align: 'top', font: { weight: 'bold', size: 11 }, formatter: (val) => val > 0 ? fmtNum(val) : '' } 
+                }, 
+                scales: { y: { beginAtZero: true, grid: { display: false } }, x: { grid: { display: false } } } 
+            }
         });
 
+        // Lanzamos el cálculo semanal usando los datos RDC
         calcularSemanasCorrelativas(mesesCiclo, fIni, fFin);
+
     } catch (err) { alert("❌ Error: " + err.message); console.error(err); } finally { btn.innerText = "✨ Calcular Balance Completo (Vía AEMET)"; btn.disabled = false; }
 }
 
+// --- FUNCIÓN 2: CALCULAR SEMANAS CORRELATIVAS (SINCRONIZADA CON RDC) ---
 function calcularSemanasCorrelativas(mesesCiclo, fIni, fFin) {
     let mapaDiario = {};
-    mesesCiclo.forEach(m => {
+    const inputsRDC = document.querySelectorAll('.pct-rdc-input');
+
+    mesesCiclo.forEach((m, index) => {
         const diasMesTotal = new Date(m.anio, m.mesNum, 0).getDate();
-        const valorDiario = m.nhn_m3 / m.diasActivos;
-        let iterMes = new Date(m.anio, m.mesNum - 1, 1);
+        
+        // --- AQUÍ LA CLAVE: Usamos el RDC para el prorrateo semanal ---
+        const pctRDC = inputsRDC[index] ? (parseFloat(inputsRDC[index].value) || 0) / 100 : 1;
+        const valorRDC_Mensual = m.nhn_m3 * pctRDC;
+        const valorDiarioRDC = valorRDC_Mensual / m.diasActivos;
+        
         for(let d=1; d<=diasMesTotal; d++){
             let fechaD = new Date(m.anio, m.mesNum - 1, d);
-            if(fechaD >= fIni && fechaD <= fFin) mapaDiario[fechaD.toISOString().split('T')[0]] = valorDiario;
+            if(fechaD >= fIni && fechaD <= fFin) {
+                mapaDiario[fechaD.toISOString().split('T')[0]] = valorDiarioRDC;
+            }
         }
     });
 
     let semanasData = {}, iter = new Date(fIni);
     while(iter <= fFin) {
         const key = `S${getWeekNumber(iter)}-${iter.getFullYear()}`;
-        if(!semanasData[key]) semanasData[key] = { num: getWeekNumber(iter), suma: 0, inicio: new Date(iter), fin: new Date(iter) };
+        if(!semanasData[key]) {
+            semanasData[key] = { num: getWeekNumber(iter), suma: 0, inicio: new Date(iter), fin: new Date(iter) };
+        }
         semanasData[key].suma += (mapaDiario[iter.toISOString().split('T')[0]] || 0);
         semanasData[key].fin = new Date(iter);
         iter.setDate(iter.getDate() + 1);
     }
+
+    const cuerpo = document.getElementById('cuerpoTablaSemanal');
+    cuerpo.innerHTML = ""; exportDataSemanal = [];
+    let labelsS = [], dataS = [], totalS = 0;
+
+    Object.values(semanasData).sort((a,b) => a.inicio - b.inicio).forEach(s => {
+        const val = Math.round(s.suma);
+        totalS += val;
+        labelsS.push(s.num);
+        dataS.push(val);
+        const fechasEtiqueta = `${formatDate(s.inicio)} - ${formatDate(s.fin)}`;
+        
+        cuerpo.innerHTML += `
+            <tr>
+                <td style="font-weight:bold; color:#1e3a8a">Semana ${s.num}</td>
+                <td>${fechasEtiqueta}</td>
+                <td class="col-ajustada">${fmtNum(val)} m³/ha</td>
+            </tr>`;
+        
+        exportDataSemanal.push({
+            "Semana": s.num,
+            "Fechas": fechasEtiqueta,
+            "Riego Neto RDC (m3/ha)": val
+        });
+    });
+
+    document.getElementById('totalSemanalSuma').innerText = fmtNum(totalS) + " m³/ha";
+    document.getElementById('seccionSemanal').style.display = "block";
+
+    if(miGraficaSemana) miGraficaSemana.destroy();
+    miGraficaSemana = new Chart(document.getElementById('graficaSemanal').getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: labelsS,
+            datasets: [{
+                label: 'Riego Neto Semanal RDC (m³/ha)',
+                data: dataS,
+                borderColor: '#ca8a04',
+                backgroundColor: 'rgba(202, 138, 4, 0.1)',
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: { padding: { top: 30 } },
+            plugins: {
+                datalabels: { display: true, align: 'top', offset: 8, font: { weight: 'bold', size: 10 }, formatter: (val) => val > 0 ? fmtNum(val) : '' }
+            },
+            scales: {
+                y: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+                x: { grid: { display: false } }
+            }
+        }
+    });
+}
 
     const cuerpo = document.getElementById('cuerpoTablaSemanal');
     cuerpo.innerHTML = ""; exportDataSemanal = [];
@@ -399,25 +526,34 @@ function inicializarInterfazRDC(meses) {
     const contenedor = document.getElementById('gridMesesRDC');
     const panel = document.getElementById('panelEstrategiaRDC');
     const volMax = parseFloat(document.getElementById('volDisponible').value) || 0;
+    
     panel.style.display = "block";
     document.getElementById('labelMaxDisponible').innerText = fmtNum(volMax);
     contenedor.innerHTML = "";
-    meses.forEach((m, i) => {
-        contenedor.innerHTML += `<div style="background: white; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.05);"><label style="display: block; font-size: 0.7rem; font-weight: 800; color: #64748b; margin-bottom: 8px; text-transform: uppercase;">${m.etiqueta}</label><div style="display: flex; align-items: center; justify-content: center; gap: 4px;"><input type="number" class="pct-rdc-input" data-idx="${i}" value="100" min="0" max="100" style="width: 55px; border: 1px solid #94a3b8; border-radius: 4px; padding: 4px; text-align: center; font-weight: 800; color: #1e293b;"><span style="font-size: 0.8rem; font-weight: 700; color: #475569;">%</span></div><div style="font-size: 0.65rem; color: #94a3b8; margin-top: 5px; border-top: 1px solid #f1f5f9; padding-top:2px">Max: ${fmtNum(m.nhn_m3)}</div></div>`;
-    });
-    const inputs = document.querySelectorAll('.pct-rdc-input');
-    const actualizarSuma = () => {
-        let acumuladoRDC = 0;
-        inputs.forEach(inp => { acumuladoRDC += meses[inp.dataset.idx].nhn_m3 * ((parseFloat(inp.value) || 0) / 100); });
-        document.getElementById('labelConsumoRDC').innerText = fmtNum(acumuladoRDC);
-        const status = document.getElementById('statusRDC');
-        if (acumuladoRDC > volMax) { status.innerHTML = `<span style="color: #dc2626;">⚠️ EXCESO: -${fmtNum(acumuladoRDC - volMax)} m³/ha</span>`; }
-        else { status.innerHTML = `<span style="color: #16a34a;">✅ ESTRATEGIA VIABLE</span>`; }
-    };
-    inputs.forEach(input => input.addEventListener('input', actualizarSuma));
-    actualizarSuma();
-}
 
+    meses.forEach((m, i) => {
+        contenedor.innerHTML += `
+            <div style="background: white; padding: 12px; border-radius: 10px; border: 1px solid #bae6fd; text-align: center; min-width: 100px; flex: 1;">
+                <label style="display: block; font-size: 0.75rem; font-weight: 800; color: #0369a1; margin-bottom: 8px;">${m.etiqueta.toUpperCase()}</label>
+                <div style="display: flex; align-items: center; justify-content: center; gap: 4px;">
+                    <input type="number" class="pct-rdc-input" data-idx="${i}" value="100" min="0" max="100" 
+                        style="width: 60px; border: 2px solid #3b82f6; border-radius: 6px; padding: 5px; text-align: center; font-weight: 800; font-size: 1rem;">
+                    <span style="font-weight: 700; color: #3b82f6;">%</span>
+                </div>
+                <div style="font-size: 0.7rem; color: #64748b; margin-top: 8px; font-weight: 600;">Máx: ${fmtNum(m.nhn_m3)}</div>
+            </div>`;
+    });
+
+    const inputs = document.querySelectorAll('.pct-rdc-input');
+    
+    inputs.forEach(input => {
+        input.addEventListener('change', () => {
+            // AL CAMBIAR UN PORCENTAJE, REEJECUTAMOS GENERARPLANORO
+            // Esto actualizará la tabla, los gráficos y la sección semanal automáticamente
+            generarPlanOro();
+        });
+    });
+}
 function descargarExcel() {
     const ws = XLSX.utils.json_to_sheet(exportDataMensual);
     const wb = XLSX.utils.book_new();
