@@ -353,7 +353,10 @@ async function generarPlanOro() {
             }
             iter.setMonth(iter.getMonth() + 1);
         }
-
+// Llamada para generar los cuadritos de los meses si el panel está vacío
+if (document.getElementById('gridMesesRDC').innerHTML === "") {
+    inicializarInterfazRDC(mesesCiclo);
+}
         // --- RENDERIZADO DE TABLA Y GRÁFICO ---
         const cuerpo = document.getElementById('cuerpoTabla');
         cuerpo.innerHTML = ""; exportDataMensual = [];
@@ -452,17 +455,51 @@ async function generarPlanOro() {
 }
 function calcularSemanasCorrelativas(mesesCiclo, fIni, fFin) {
     let mapaDiario = {};
-    mesesCiclo.forEach(m => {
-        const m3Diario = m.m3AsignadoFinal / m.diasActivos;
-        let dIter = new Date(m.anio, m.mesNum - 1, 1);
-        let dFinMes = new Date(m.anio, m.mesNum, 0);
-        if(dIter < fIni) dIter = new Date(fIni); 
-        let limite = (dFinMes > fFin) ? fFin : dFinMes; 
-        while(dIter <= limite) {
-            mapaDiario[dIter.toISOString().split('T')[0]] = m3Diario;
-            dIter.setDate(dIter.getDate() + 1);
-        }
+    let sumaTotalRDC = 0; // Nueva variable para el total de tu estrategia
+
+mesesCiclo.forEach((m, index) => {
+    const m3Asignado = sumaNHn > 0 ? (m.nhn_m3 / sumaNHn) * volV : 0;
+    sumaAsignada += m3Asignado;
+    sumaP += m.pMm; sumaPe += m.peMm;
+    m.m3AsignadoFinal = m3Asignado;
+
+    // --- LÓGICA DE ESTRATEGIA RDC ---
+    // Buscamos el cuadrito de este mes y leemos su %
+    const inputMes = document.querySelector(`.pct-rdc-input[data-idx="${index}"]`);
+    const factorRDC = inputMes ? (parseFloat(inputMes.value) || 0) / 100 : 1;
+    const valorRDC = m.nhn_m3 * factorRDC; // Tu decisión: NHn * %
+    sumaTotalRDC += valorRDC;
+    
+    labels.push(m.etiqueta);
+    dataPe.push(Math.round(m.peMm * 10));
+    dataIdeal.push(Math.round(m.nhn_m3));
+    dataAjustada.push(Math.round(m3Asignado));
+    // Guardamos el RDC para el gráfico también
+    if(!window.dataGraficaRDC) window.dataGraficaRDC = []; 
+    window.dataGraficaRDC[index] = Math.round(valorRDC);
+    
+    cuerpo.innerHTML += `<tr>
+        <td style="text-transform: capitalize; font-weight:600; color:#1e293b;">${m.etiqueta}</td>
+        <td>${fmtNum(m.diasActivos)}</td>
+        <td class="col-climate">${fmtNum(m.etoDiaria, 2)}</td>
+        <td class="col-climate">${fmtNum(m.kc, 2)}</td>
+        <td>${fmtNum(m.etcMm, 1)}</td>
+        <td class="col-rain">${fmtNum(m.pMm, 1)}</td>
+        <td class="col-rain" style="font-weight:bold">${fmtNum(m.peMm, 1)}</td>
+        <td class="col-ideal">${fmtNum(m.nhn_m3)}</td>
+        <td class="col-ajustada">${fmtNum(m3Asignado)}</td>
+        <td style="background: #fffbeb; color: #b45309; font-weight: 800; border-left: 2px solid #fde68a;">${fmtNum(valorRDC)}</td>
+    </tr>`;
+    
+    exportDataMensual.push({ 
+        "Mes": m.etiqueta, "ETc (mm)": fmtNum(m.etcMm, 2), "P. Efectiva (mm)": fmtNum(m.peMm, 2), 
+        "Nec. Neta (m3/ha)": Math.round(m.nhn_m3), "Asignado (m3/ha)": Math.round(m3Asignado),
+        "RDC (m3/ha)": Math.round(valorRDC) // Añadido al Excel
     });
+});
+
+// Pintamos el total de la nueva columna al final
+document.getElementById('totalRDC').innerText = fmtNum(sumaTotalRDC);
 
     let semanasData = {};
     let iter = new Date(fIni);
@@ -581,9 +618,7 @@ function renderizarControlesRDC(meses) {
         });
     });
 }    
-    
-</script>
-</body>// Función para crear y gestionar los controles de RDC
+// Función para crear y gestionar los controles de RDC
 function inicializarInterfazRDC(meses) {
     const contenedor = document.getElementById('gridMesesRDC');
     const panel = document.getElementById('panelEstrategiaRDC');
@@ -636,5 +671,7 @@ function inicializarInterfazRDC(meses) {
     
     // Calculamos el estado inicial (al 100%)
     actualizarSuma();
-}
+}    
+</script>
+</body>
 </html>
