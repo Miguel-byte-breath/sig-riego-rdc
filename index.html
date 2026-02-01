@@ -184,7 +184,7 @@
 // --- CONFIGURACIÓN API AEMET Y MEMORIA ---
 const API_KEY = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJtYW1vcmVub0B2aXN1YWxuYWNlcnQuY29tIiwianRpIjoiZTY0NzI0MmQtODViZi00MjI1LWE4OTUtZGQzMDhlZDcxODczIiwiaXNzIjoiQUVNRVQiLCJpYXQiOjE3Njk2ODg1NDAsInVzZXJJZCI6ImU2NDcyNDJkLTg1YmYtNDIyNS1hODk1LWRkMzA4ZWQ3MTg3MyIsInJvbGUiOiIifQ.Z8zZ2V46tQcyR1OhJiHmxf3yn5LxKTDHjXNqxNRVmKI";
 let estacionSeleccionadaId = null; 
-let cacheAemet = null; // Guardará la respuesta de la API para no repetir llamadas
+
 // --- CONFIGURACIÓN GLOBAL CHART.JS ---
 Chart.register(ChartDataLabels);
 Chart.defaults.font.family = "'Segoe UI', 'Helvetica', 'Arial', sans-serif";
@@ -282,104 +282,254 @@ async function encontrarMasCercana() {
 
 // SECCIÓN 2: Cálculo con API AEMET (Bucle de Resiliencia) + Estrategia RDC
 async function generarPlanOro() {
-    if(!estacionSeleccionadaId) return alert("⚠️ Valida la estación primero.");
+    if(!estacionSeleccionadaId) return alert("⚠️ La estación aún no ha sido validada en el Paso 1.");
+    
     const volV = parseFloat(document.getElementById('volDisponible').value) || 0;
-    
-    let aemet;
-    if (window.datosCacheAemet) {
-        aemet = window.datosCacheAemet;
-    } else {
-        const btn = document.querySelector(".btn-gold");
-        btn.disabled = true; btn.innerText = "⏳ Consultando AEMET...";
-        try {
-            const anioFin = new Date().getFullYear() - 1;
-            const urlA = `https://opendata.aemet.es/opendata/api/valores/climatologicos/mensualesanuales/datos/anioini/${anioFin-2}/aniofin/${anioFin}/estacion/${estacionSeleccionadaId}?api_key=${API_KEY}`;
-            const res = await fetch(urlA);
-            const meta = await res.json();
-            const dataRes = await fetch(meta.datos);
-            aemet = await dataRes.json(); 
-            window.datosCacheAemet = aemet; // Guardamos para no repetir
-        } catch (err) {
-            alert("❌ Error: " + err.message); return;
-        } finally {
-            btn.disabled = false; btn.innerText = "✨ Calcular Balance Completo (Vía AEMET)";
+    if(window.datosCacheAemet) { return renderizarConCache(); }
+    const btn = document.querySelector(".btn-gold");
+    btn.disabled = true;
+    btn.innerText = "⏳ Procesando datos agronómicos...";
+
+    try {
+        const anioFin = new Date().getFullYear() - 1;
+        const anioIni = anioFin - 2;
+
+        const urlAemet = `https://opendata.aemet.es/opendata/api/valores/climatologicos/mensualesanuales/datos/anioini/${anioIni}/aniofin/${anioFin}/estacion/${estacionSeleccionadaId}?api_key=${API_KEY}`;
+        
+        const response = await fetch(urlAemet);
+        const metadata = await response.json();
+        const dataResponse = await fetch(metadata.datos);
+        const aemet = await dataResponse.json(); 
+
+        // --- LÓGICA AGRONÓMICA ORIGINAL ---
+        const cultivo = cultivosData[document.getElementById('selectCultivo').value];
+        const fIni = new Date(document.getElementById('cicloIni').value);
+        const fFin = new Date(document.getElementById('cicloFin').value);
+
+        const medias = Array(13).fill(0).map(() => ({ sumEto: 0, sumP: 0, count: 0 }));
+        
+        aemet.forEach(d => {
+            const m = parseInt(d.fecha.split('-')[1]);
+            let valEto = parseFloat(String(d.eto_mes || d.evap_mes || d.e || "0").replace(',','.'));
+            let valP = parseFloat(String(d.p_mes || d.precipitacion || "0").replace(',','.')); 
+            
+            if(m < 13) { 
+                if(valEto >= 0) medias[m].sumEto += valEto;
+                if(valP >= 0) medias[m].sumP += valP;
+                medias[m].count++; 
+            }
+        });
+
+        let mesesCiclo = [], sumaNHn = 0, iter = new Date(fIni.getFullYear(), fIni.getMonth(), 1);
+        
+        while (iter <= fFin) {
+            const mIdx = iter.getMonth(), anio = iter.getFullYear();
+            const diasMesTotal = new Date(anio, mIdx + 1, 0).getDate();
+            const rIni = new Date(Math.max(iter, fIni)), rFin = new Date(Math.min(new Date(anio, mIdx, diasMesTotal), fFin));
+            const nDiasActivos = Math.max(0, (rFin - rIni) / (86400000) + 1);
+
+            if (nDiasActivos > 0) {
+                const etoMensualAvg = medias[mIdx+1].count > 0 ? (medias[mIdx+1].sumEto / medias[mIdx+1].count) : 0;
+                const pMensualAvg = medias[mIdx+1].count > 0 ? (medias[mIdx+1].sumP / medias[mIdx+1].count) : 0;
+
+                const etoDiaria = etoMensualAvg / diasMesTotal;
+                const kc = cultivo.kc[mIdx+1] || 0;
+                const etcDiaria = etoDiaria * kc;
+                const etcMesTotal = etcDiaria * nDiasActivos; 
+
+                let peMensualTotal = (pMensualAvg < 70) ? (0.6 * pMensualAvg) - 10 : (0.8 * pMensualAvg) - 24;
+                if (peMensualTotal < 0) peMensualTotal = 0;
+
+                const peActiva = (peMensualTotal / diasMesTotal) * nDiasActivos;
+                const nhn_m3 = Math.max(0, etcMesTotal - peActiva) * 10;
+
+                sumaNHn += nhn_m3;
+                const etiquetaBonita = `${nombresMesesCortos[mIdx]}-${String(anio).slice(-2)}`;
+
+                mesesCiclo.push({ 
+                    etiqueta: etiquetaBonita, mesNum: mIdx+1, anio: anio, diasActivos: nDiasActivos,
+                    etoDiaria: etoDiaria, kc: kc, etcMm: etcMesTotal, pMm: pMensualAvg, peMm: peActiva, nhn_m3: nhn_m3 
+                });
+            }
+            iter.setMonth(iter.getMonth() + 1);
         }
+
+        // --- RENDERIZADO DE TABLA Y GRÁFICO ---
+        const cuerpo = document.getElementById('cuerpoTabla');
+        cuerpo.innerHTML = ""; exportDataMensual = [];
+        let labels = [], dataPe = [], dataIdeal = [], dataAjustada = [];
+        let sumaAsignada = 0, sumaP = 0, sumaPe = 0, sumaTotalRDC = 0;
+
+        mesesCiclo.forEach((m, index) => {
+            const m3Asignado = sumaNHn > 0 ? (m.nhn_m3 / sumaNHn) * volV : 0;
+            sumaAsignada += m3Asignado;
+            sumaP += m.pMm; sumaPe += m.peMm;
+            m.m3AsignadoFinal = m3Asignado;
+
+            // --- CÁLCULO QUIRÚRGICO RDC ---
+            const todosInputsRDC = document.querySelectorAll('.rdc-input');
+            const pctRDC = todosInputsRDC[index] ? (parseFloat(todosInputsRDC[index].value) || 0) / 100 : 1;
+            const valorRDC = m.nhn_m3 * pctRDC;
+            sumaTotalRDC += valorRDC;
+            
+            labels.push(m.etiqueta);
+            dataPe.push(Math.round(m.peMm * 10));
+            dataIdeal.push(Math.round(m.nhn_m3));
+            dataAjustada.push(Math.round(m3Asignado));
+            
+            cuerpo.innerHTML += `<tr>
+                <td style="text-transform: capitalize; font-weight:600; color:#1e293b;">${m.etiqueta}</td>
+                <td>${fmtNum(m.diasActivos)}</td>
+                <td class="col-climate">${fmtNum(m.etoDiaria, 2)}</td>
+                <td class="col-climate">${fmtNum(m.kc, 2)}</td>
+                <td>${fmtNum(m.etcMm, 1)}</td>
+                <td class="col-rain">${fmtNum(m.pMm, 1)}</td>
+                <td class="col-rain" style="font-weight:bold">${fmtNum(m.peMm, 1)}</td>
+                <td class="col-ideal">${fmtNum(m.nhn_m3)}</td>
+                <td class="col-ajustada">${fmtNum(m3Asignado)}</td>
+                <td style="background: #fffbeb; color: #b45309; font-weight: 800; border-left: 2px solid #fde68a;">${fmtNum(valorRDC)}</td>
+            </tr>`;
+            
+            exportDataMensual.push({ 
+                "Mes": m.etiqueta, "ETc (mm)": fmtNum(m.etcMm, 2), "P. Efectiva (mm)": fmtNum(m.peMm, 2), 
+                "Nec. Neta (m3/ha)": Math.round(m.nhn_m3), "Asignado (m3/ha)": Math.round(m3Asignado),
+                "RDC (m3/ha)": Math.round(valorRDC)
+            });
+        });
+
+        document.getElementById('totalP').innerText = fmtNum(sumaP, 1);
+        document.getElementById('totalPe').innerText = fmtNum(sumaPe, 1);
+        document.getElementById('totalIdeal').innerText = fmtNum(sumaNHn);
+        document.getElementById('totalAjustado').innerText = fmtNum(sumaAsignada);
+        document.getElementById('totalRDC').innerText = fmtNum(sumaTotalRDC);
+        
+        document.getElementById('panelResultados').style.display = "block";
+
+        // --- LLAMADA PARA RENDERIZAR CONTROLES RDC (SI NO EXISTEN) ---
+        if(document.getElementById('controlesRDC').innerHTML === "") {
+            renderizarControlesRDC(mesesCiclo);
+            document.getElementById('sumaRDC').innerText = fmtNum(sumaTotalRDC);
+        }
+
+        if(miGrafica) miGrafica.destroy();
+        miGrafica = new Chart(document.getElementById('graficaDoble').getContext('2d'), {
+            type: 'bar',
+            data: { 
+                labels: labels, 
+                datasets: [
+                    { label: 'P. Efectiva (m³/ha)', data: dataPe, backgroundColor: '#38bdf8' },
+                    { label: 'Nec. Neta (m³/ha)', data: dataIdeal, backgroundColor: '#2563eb' },
+                    { label: 'Riego Asig. (m³/ha)', data: dataAjustada, backgroundColor: '#d97706' }
+                ] 
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: { padding: { top: 30 } },
+                plugins: {
+                    datalabels: {
+                        anchor: 'end',
+                        align: 'top',
+                        font: { weight: 'bold', size: 11 },
+                        formatter: (val) => val > 0 ? fmtNum(val) : ''
+                    }
+                },
+                scales: {
+                    y: { beginAtZero: true, grid: { display: false } },
+                    x: { grid: { display: false } }
+                }
+            }
+        });
+
+       renderizarConCache(mesesCiclo);
+
+    } catch (err) {
+        alert("❌ Error al procesar el balance: " + err.message);
+    } finally {
+        btn.innerText = "✨ Calcular Balance Completo (Vía AEMET)";
+        btn.disabled = false;
+    }
+}
+function actualizarSeccionSemanalRDC(mapaDiarioRDC, fIni, fFin) {
+    let semanasData = {};
+    let iter = new Date(fIni);
+    
+    // Recorremos el ciclo día a día sumando los valores del mapa RDC
+    while(iter <= fFin) {
+        const numSem = getWeekNumber(iter);
+        const anio = iter.getFullYear();
+        const key = `S${numSem}-${anio}`;
+        const diaStr = iter.toISOString().split('T')[0];
+        
+        if(!semanasData[key]) {
+            semanasData[key] = { num: numSem, suma: 0, inicio: new Date(iter), fin: new Date(iter) };
+        }
+        
+        // Aquí sumamos el valor que viene de tu estrategia RDC
+        semanasData[key].suma += (mapaDiarioRDC[diaStr] || 0);
+        semanasData[key].fin = new Date(iter);
+        iter.setDate(iter.getDate() + 1);
     }
 
-    const cultivo = cultivosData[document.getElementById('selectCultivo').value];
-    const fIni = new Date(document.getElementById('cicloIni').value);
-    const fFin = new Date(document.getElementById('cicloFin').value);
-    const medias = Array(13).fill(0).map(() => ({ sumEto: 0, sumP: 0, count: 0 }));
-    
-    aemet.forEach(d => {
-        const m = parseInt(d.fecha.split('-')[1]);
-        if(m < 13) { 
-            medias[m].sumEto += parseFloat(String(d.eto_mes || d.evap_mes || "0").replace(',','.'));
-            medias[m].sumP += parseFloat(String(d.p_mes || d.precipitacion || "0").replace(',','.'));
-            medias[m].count++; 
-        }
-    });
-
-    let mesesCiclo = [], sumaNHn = 0, iter = new Date(fIni.getFullYear(), fIni.getMonth(), 1);
-    while (iter <= fFin) {
-        const mIdx = iter.getMonth(), anio = iter.getFullYear();
-        const dMesT = new Date(anio, mIdx + 1, 0).getDate();
-        const rI = new Date(Math.max(iter, fIni)), rF = new Date(Math.min(new Date(anio, mIdx, dMesT), fFin));
-        const nD = Math.max(0, (rF - rI) / (86400000) + 1);
-        if (nD > 0) {
-            const etoM = medias[mIdx+1].count > 0 ? (medias[mIdx+1].sumEto / medias[mIdx+1].count) : 0;
-            const pM = medias[mIdx+1].count > 0 ? (medias[mIdx+1].sumP / medias[mIdx+1].count) : 0;
-            const etoD = etoM / dMesT;
-            const kc = cultivo.kc[mIdx+1] || 0;
-            const etcM = (etoD * kc) * nD; 
-            let peM = (pM < 70) ? (0.6 * pM) - 10 : (0.8 * pM) - 24;
-            const peA = (Math.max(0, peM) / dMesT) * nD;
-            const nhn = Math.max(0, etcM - peA) * 10;
-            sumaNHn += nhn;
-            mesesCiclo.push({ etiqueta: `${nombresMesesCortos[mIdx]}-${String(anio).slice(-2)}`, mesNum: mIdx+1, anio, diasActivos: nD, etoD, kc, etcMes: etcM, pM, peA, nhn });
-        }
-        iter.setMonth(iter.getMonth() + 1);
-    }
-
-    const cuerpo = document.getElementById('cuerpoTabla');
+    const cuerpo = document.getElementById('cuerpoTablaSemanal');
     cuerpo.innerHTML = ""; 
-    let labels = [], dIdeal = [], dRDC = [], sAsig = 0, sRDC = 0, mapaDiarioRDC = {};
-    const inputs = document.querySelectorAll('.rdc-input');
+    exportDataSemanal = []; // Limpiamos para el nuevo Excel
+    
+    let labelsS = [], dataS = [], totalS = 0;
+    const listaSemanas = Object.values(semanasData).sort((a,b) => a.inicio - b.inicio);
 
-    mesesCiclo.forEach((m, i) => {
-        const asig = sumaNHn > 0 ? (m.nhn / sumaNHn) * volV : 0;
-        const pct = inputs[i] ? (parseFloat(inputs[i].value) || 0) / 100 : 1;
-        const vRDC = m.nhn * pct;
-        sAsig += asig; sRDC += vRDC;
-        labels.push(m.etiqueta); dIdeal.push(Math.round(m.nhn)); dRDC.push(Math.round(vRDC));
+    listaSemanas.forEach(s => {
+        const val = Math.round(s.suma);
+        totalS += val;
+        labelsS.push(s.num);
+        dataS.push(val);
+        const fechas = `${formatDate(s.inicio)} - ${formatDate(s.fin)}`;
+        
+        cuerpo.innerHTML += `
+            <tr>
+                <td style="font-weight:bold; color:#1e3a8a">Semana ${s.num}</td>
+                <td>${fechas}</td>
+                <td class="col-ajustada">${fmtNum(val)} m³/ha</td>
+            </tr>`;
+            
+        exportDataSemanal.push({ "Semana": s.num, "Fechas": fechas, "Riego RDC (m3/ha)": val });
+    });
 
-        const valD = vRDC / m.diasActivos;
-        let dI = new Date(m.anio, m.mesNum - 1, 1);
-        let dF = new Date(m.anio, m.mesNum, 0);
-        while(dI <= dF) {
-            if(dI >= fIni && dI <= fFin) mapaDiarioRDC[dI.toISOString().split('T')[0]] = valD;
-            dI.setDate(dI.getDate() + 1);
+    document.getElementById('totalSemanalSuma').innerText = fmtNum(totalS) + " m³/ha";
+    document.getElementById('seccionSemanal').style.display = "block";
+
+    // Actualizamos la gráfica de la Sección 3
+    if(miGraficaSemana) miGraficaSemana.destroy();
+    miGraficaSemana = new Chart(document.getElementById('graficaSemanal').getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: labelsS,
+            datasets: [{
+                label: 'Planificación Semanal RDC (m³/ha)',
+                data: dataS,
+                borderColor: '#ca8a04',
+                backgroundColor: 'rgba(202, 138, 4, 0.1)',
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                datalabels: {
+                    display: true,
+                    align: 'top',
+                    font: { weight: 'bold', size: 10 },
+                    formatter: (val) => val > 0 ? fmtNum(val) : ''
+                }
+            },
+            scales: {
+                y: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+                x: { grid: { display: false } }
+            }
         }
-
-        cuerpo.innerHTML += `<tr><td>${m.etiqueta}</td><td>${fmtNum(m.diasActivos)}</td><td>${fmtNum(m.etoD, 2)}</td><td>${fmtNum(m.kc, 2)}</td><td>${fmtNum(m.etcMes, 1)}</td><td>${fmtNum(m.pM, 1)}</td><td>${fmtNum(m.peA, 1)}</td><td class="col-ideal">${fmtNum(m.nhn)}</td><td class="col-ajustada">${fmtNum(asig)}</td><td style="background:#fffbeb; font-weight:800; color:#b45309;">${fmtNum(vRDC)}</td></tr>`;
     });
-
-    document.getElementById('totalIdeal').innerText = fmtNum(sumaNHn);
-    document.getElementById('totalAjustado').innerText = fmtNum(sAsig);
-    document.getElementById('totalRDC').innerText = fmtNum(sRDC);
-    document.getElementById('sumaRDC').innerText = fmtNum(sRDC);
-    document.getElementById('panelResultados').style.display = "block";
-
-    if(document.getElementById('controlesRDC').innerHTML.trim() === "") renderizarControlesRDC(mesesCiclo);
-
-    if(window.miGrafica) window.miGrafica.destroy();
-    window.miGrafica = new Chart(document.getElementById('graficaDoble').getContext('2d'), {
-        type: 'bar',
-        data: { labels, datasets: [{ label: 'Nec. Neta', data: dIdeal, backgroundColor: '#cbd5e1' }, { label: 'Estrategia RDC', data: dRDC, backgroundColor: '#d97706' }]},
-        options: { responsive: true, maintainAspectRatio: false }
-    });
-
-    actualizarSeccionSemanalRDC(mapaDiarioRDC, fIni, fFin);
 }
 
 function descargarExcel() {
