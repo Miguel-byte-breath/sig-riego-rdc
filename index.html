@@ -301,7 +301,7 @@ async function generarPlanOro() {
         const dataResponse = await fetch(metadata.datos);
         const aemet = await dataResponse.json(); 
 
-        // --- LÓGICA AGRONÓMICA ORIGINAL ---
+        // --- LÓGICA AGRONÓMICA ---
         const cultivo = cultivosData[document.getElementById('selectCultivo').value];
         const fIni = new Date(document.getElementById('cicloIni').value);
         const fFin = new Date(document.getElementById('cicloFin').value);
@@ -353,24 +353,25 @@ async function generarPlanOro() {
             }
             iter.setMonth(iter.getMonth() + 1);
         }
-// Llamada para generar los cuadritos de los meses si el panel está vacío
-if (document.getElementById('gridMesesRDC').innerHTML === "") {
-    inicializarInterfazRDC(mesesCiclo);
-}
+
+        // --- ACTIVACIÓN DEL PANEL RDC SI ESTÁ VACÍO ---
+        if (document.getElementById('gridMesesRDC').innerHTML.trim() === "") {
+            inicializarInterfazRDC(mesesCiclo);
+        }
+
         // --- RENDERIZADO DE TABLA Y GRÁFICO ---
         const cuerpo = document.getElementById('cuerpoTabla');
         cuerpo.innerHTML = ""; exportDataMensual = [];
-        let labels = [], dataPe = [], dataIdeal = [], dataAjustada = [];
+        let labels = [], dataPe = [], dataIdeal = [], dataAjustada = [], dataRDC = [];
         let sumaAsignada = 0, sumaP = 0, sumaPe = 0, sumaTotalRDC = 0;
 
         mesesCiclo.forEach((m, index) => {
             const m3Asignado = sumaNHn > 0 ? (m.nhn_m3 / sumaNHn) * volV : 0;
             sumaAsignada += m3Asignado;
             sumaP += m.pMm; sumaPe += m.peMm;
-            m.m3AsignadoFinal = m3Asignado;
-
-            // --- CÁLCULO QUIRÚRGICO RDC ---
-            const todosInputsRDC = document.querySelectorAll('.rdc-input');
+            
+            // --- CAPTURA DE VALORES DEL PANEL RDC ---
+            const todosInputsRDC = document.querySelectorAll('.pct-rdc-input');
             const pctRDC = todosInputsRDC[index] ? (parseFloat(todosInputsRDC[index].value) || 0) / 100 : 1;
             const valorRDC = m.nhn_m3 * pctRDC;
             sumaTotalRDC += valorRDC;
@@ -379,6 +380,7 @@ if (document.getElementById('gridMesesRDC').innerHTML === "") {
             dataPe.push(Math.round(m.peMm * 10));
             dataIdeal.push(Math.round(m.nhn_m3));
             dataAjustada.push(Math.round(m3Asignado));
+            dataRDC.push(Math.round(valorRDC));
             
             cuerpo.innerHTML += `<tr>
                 <td style="text-transform: capitalize; font-weight:600; color:#1e293b;">${m.etiqueta}</td>
@@ -394,8 +396,11 @@ if (document.getElementById('gridMesesRDC').innerHTML === "") {
             </tr>`;
             
             exportDataMensual.push({ 
-                "Mes": m.etiqueta, "ETc (mm)": fmtNum(m.etcMm, 2), "P. Efectiva (mm)": fmtNum(m.peMm, 2), 
-                "Nec. Neta (m3/ha)": Math.round(m.nhn_m3), "Asignado (m3/ha)": Math.round(m3Asignado),
+                "Mes": m.etiqueta, 
+                "ETc (mm)": fmtNum(m.etcMm, 2), 
+                "P. Efectiva (mm)": fmtNum(m.peMm, 2), 
+                "NHn (m3/ha)": Math.round(m.nhn_m3), 
+                "Asignado (m3/ha)": Math.round(m3Asignado),
                 "RDC (m3/ha)": Math.round(valorRDC)
             });
         });
@@ -408,12 +413,6 @@ if (document.getElementById('gridMesesRDC').innerHTML === "") {
         
         document.getElementById('panelResultados').style.display = "block";
 
-        // --- LLAMADA PARA RENDERIZAR CONTROLES RDC (SI NO EXISTEN) ---
-        if(document.getElementById('controlesRDC').innerHTML === "") {
-            renderizarControlesRDC(mesesCiclo);
-            document.getElementById('sumaRDC').innerText = fmtNum(sumaTotalRDC);
-        }
-
         if(miGrafica) miGrafica.destroy();
         miGrafica = new Chart(document.getElementById('graficaDoble').getContext('2d'), {
             type: 'bar',
@@ -421,8 +420,9 @@ if (document.getElementById('gridMesesRDC').innerHTML === "") {
                 labels: labels, 
                 datasets: [
                     { label: 'P. Efectiva (m³/ha)', data: dataPe, backgroundColor: '#38bdf8' },
-                    { label: 'Nec. Neta (m³/ha)', data: dataIdeal, backgroundColor: '#2563eb' },
-                    { label: 'Riego Asig. (m³/ha)', data: dataAjustada, backgroundColor: '#d97706' }
+                    { label: 'Nec. Neta (m³/ha)', data: dataIdeal, backgroundColor: '#cbd5e1' }, // Gris (Techo)
+                    { label: 'Asignado (m³/ha)', data: dataAjustada, backgroundColor: '#94a3b8' }, // Gris oscuro
+                    { label: 'Estrategia RDC (m³/ha)', data: dataRDC, backgroundColor: '#d97706' } // Dorado (Tu Plan)
                 ] 
             },
             options: {
@@ -431,8 +431,7 @@ if (document.getElementById('gridMesesRDC').innerHTML === "") {
                 layout: { padding: { top: 30 } },
                 plugins: {
                     datalabels: {
-                        anchor: 'end',
-                        align: 'top',
+                        anchor: 'end', align: 'top',
                         font: { weight: 'bold', size: 11 },
                         formatter: (val) => val > 0 ? fmtNum(val) : ''
                     }
@@ -448,6 +447,7 @@ if (document.getElementById('gridMesesRDC').innerHTML === "") {
 
     } catch (err) {
         alert("❌ Error al procesar el balance: " + err.message);
+        console.error(err);
     } finally {
         btn.innerText = "✨ Calcular Balance Completo (Vía AEMET)";
         btn.disabled = false;
