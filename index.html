@@ -286,7 +286,9 @@ async function generarPlanOro() {
     const volV = parseFloat(document.getElementById('volDisponible').value) || 0;
     
     let aemet;
+    // --- LÓGICA DE MEMORIA (CACHÉ) ---
     if (window.datosCacheAemet) {
+        // Si ya tenemos los datos, saltamos la llamada a la API
         aemet = window.datosCacheAemet;
     } else {
         const btn = document.querySelector(".btn-gold");
@@ -298,7 +300,7 @@ async function generarPlanOro() {
             const metadata = await response.json();
             const dataResponse = await fetch(metadata.datos);
             aemet = await dataResponse.json(); 
-            window.datosCacheAemet = aemet; 
+            window.datosCacheAemet = aemet; // Guardamos en memoria global
         } catch (err) {
             alert("❌ Error en API: " + err.message);
             return;
@@ -307,7 +309,7 @@ async function generarPlanOro() {
         }
     }
 
-    // --- LÓGICA AGRONÓMICA ---
+    // --- CÁLCULOS AGRONÓMICOS (TUS VARIABLES ORIGINALES) ---
     const cultivo = cultivosData[document.getElementById('selectCultivo').value];
     const fIni = new Date(document.getElementById('cicloIni').value);
     const fFin = new Date(document.getElementById('cicloFin').value);
@@ -345,11 +347,11 @@ async function generarPlanOro() {
         iter.setMonth(iter.getMonth() + 1);
     }
 
-    // --- RENDERIZADO TABLA Y RDC ---
+    // --- RENDERIZADO DE INTERFAZ Y RDC ---
     const cuerpo = document.getElementById('cuerpoTabla');
-    cuerpo.innerHTML = ""; exportDataMensual = [];
+    cuerpo.innerHTML = ""; 
     let labels = [], dIdeal = [], dRDC = [], sAsig = 0, sRDC = 0, mapaDiarioRDC = {};
-    const inputs = document.querySelectorAll('.rdc-input');
+    const inputs = document.querySelectorAll('.rdc-input'); // TUS INPUTS REALES
 
     mesesCiclo.forEach((m, i) => {
         const asig = sumaNHn > 0 ? (m.nhn / sumaNHn) * volV : 0;
@@ -360,33 +362,38 @@ async function generarPlanOro() {
         labels.push(m.etiqueta);
         dIdeal.push(Math.round(m.nhn)); dRDC.push(Math.round(vRDC));
 
+        // Generar mapa diario para la Sección 3 (Semanal)
         const valD = vRDC / m.diasActivos;
         let dI = new Date(m.anio, m.mesNum - 1, 1);
         let dF = new Date(m.anio, m.mesNum, 0);
         while(dI <= dF) {
-            if(dI >= fIni && dI <= fFin) mapaDiarioRDC[dI.toISOString().split('T')[0]] = valD;
+            if(dI >= fIni && dI <= fFin) {
+                mapaDiarioRDC[dI.toISOString().split('T')[0]] = valD;
+            }
             dI.setDate(dI.getDate() + 1);
         }
 
         cuerpo.innerHTML += `<tr>
-            <td>${m.etiqueta}</td><td>${fmtNum(m.diasActivos)}</td>
-            <td>${fmtNum(m.etoD, 2)}</td><td>${fmtNum(m.kc, 2)}</td><td>${fmtNum(m.etcMes, 1)}</td>
+            <td style="text-transform: capitalize; font-weight:600;">${m.etiqueta}</td><td>${fmtNum(m.diasActivos)}</td>
+            <td class="col-climate">${fmtNum(m.etoD, 2)}</td><td class="col-climate">${fmtNum(m.kc, 2)}</td><td>${fmtNum(m.etcMes, 1)}</td>
             <td>${fmtNum(m.pM, 1)}</td><td>${fmtNum(m.peA, 1)}</td><td class="col-ideal">${fmtNum(m.nhn)}</td>
-            <td class="col-ajustada">${fmtNum(asig)}</td><td style="background:#fffbeb; font-weight:800; color:#b45309;">${fmtNum(vRDC)}</td>
+            <td class="col-ajustada">${fmtNum(asig)}</td><td style="background:#fffbeb; font-weight:800; color:#b45309; border-left: 2px solid #fde68a;">${fmtNum(vRDC)}</td>
         </tr>`;
-
-        exportDataMensual.push({ "Mes": m.etiqueta, "NHn": Math.round(m.nhn), "RDC": Math.round(vRDC) });
     });
 
+    // Actualizar totales en pantalla
     document.getElementById('totalIdeal').innerText = fmtNum(sumaNHn);
     document.getElementById('totalAjustado').innerText = fmtNum(sAsig);
     document.getElementById('totalRDC').innerText = fmtNum(sRDC);
     document.getElementById('sumaRDC').innerText = fmtNum(sRDC);
     document.getElementById('panelResultados').style.display = "block";
 
-    if(document.getElementById('controlesRDC').innerHTML.trim() === "") renderizarControlesRDC(mesesCiclo);
+    // Si el panel de controles amarillos está vacío, lo creamos
+    if(document.getElementById('controlesRDC').innerHTML.trim() === "") {
+        renderizarControlesRDC(mesesCiclo);
+    }
 
-    // --- GRÁFICO SECCIÓN 2 ---
+    // --- GRÁFICO SECCIÓN 2 (Utiliza tus IDs y objetos) ---
     if(window.miGrafica) window.miGrafica.destroy();
     window.miGrafica = new Chart(document.getElementById('graficaDoble').getContext('2d'), {
         type: 'bar',
@@ -397,7 +404,7 @@ async function generarPlanOro() {
         options: { responsive: true, maintainAspectRatio: false }
     });
 
-    // --- LANZAR SECCIÓN 3 ---
+    // --- SINCRONIZACIÓN CON SECCIÓN 3 (SEMANAL) ---
     actualizarSeccionSemanalRDC(mapaDiarioRDC, fIni, fFin);
 }
 
