@@ -541,13 +541,18 @@ function actualizarSeccionSemanalRDC(mapaDiarioRDC, fIni, fFin) {
 
     cuerpo.innerHTML += `
       <tr>
-        <td style="font-weight:bold; color:#1e3a8a">Semana ${s.num}</td>
+        <td style="font-weight:bold; color:#1e3a8a">${s.isoYear} Sem. ${String(s.num).padStart(2,'0')}</td>
         <td>${fechas}</td>
         <td class="col-ajustada">${fmtNum(val)} m³/ha</td>
       </tr>`;
 
-    exportDataSemanal.push({ "Semana": s.num, "Fechas": fechas, "Riego RDC (m3/ha)": val });
-  });
+    exportDataSemanal.push({
+  "Semana Año": `${s.isoYear}-W${String(s.num).padStart(2, "0")}`,
+  "Semana": s.num,
+  "Fechas Aprox": fechas,
+  "Riego Neto Semanal (m3/ha)": val
+});
+
 
   document.getElementById('totalSemanalSuma').innerText = fmtNum(totalS) + " m³/ha";
   document.getElementById('seccionSemanal').style.display = "block";
@@ -694,9 +699,19 @@ const valorRDC = m.nhn_m3 * pct;
             <td style="background: #fffbeb; color: #b45309; font-weight: 800; border-left: 2px solid #fde68a;">${fmtNum(valorRDC)}</td>
         </tr>`;
 
-        exportDataMensual.push({ 
-            "Mes": m.etiqueta, "NHn (m3/ha)": Math.round(m.nhn_m3), "RDC (m3/ha)": Math.round(valorRDC) 
-        });
+        exportDataMensual.push({
+  "Mes": m.etiqueta,
+  "Días": m.diasActivos,
+  "ETo (mm/d)": Number(m.etoDiaria.toFixed(3)),
+  "Kc": Number(m.kc.toFixed(3)),
+  "ETc (mm)": Number(m.etcMm.toFixed(2)),
+  "P (mm)": Number(m.pMm.toFixed(2)),
+  "Pe (mm)": Number(m.peMm.toFixed(2)),
+  "NHn (m3/ha)": Number(m.nhn_m3.toFixed(0)),
+  "Asignado (m3/ha)": Number(asigAmet.toFixed(0)),
+  "RDC (m3/ha)": Number(valorRDC.toFixed(0))
+});
+
     });
 
     // 2. Actualizamos totales y avisos
