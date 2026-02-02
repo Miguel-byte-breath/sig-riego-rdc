@@ -460,86 +460,122 @@ sumaTotalRDC += valorRDC;
         btn.disabled = false;
     }
 }
+function getISOWeekInfo(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;       // lunes=1..domingo=7
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum); // mover al jueves
+
+  const isoYear = d.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+  const week = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  return { isoYear, week };
+}
+
+function getISOMondayOfWeek(isoYear, week) {
+  const jan4 = new Date(Date.UTC(isoYear, 0, 4)); // siempre en semana 1 ISO
+  const dayNum = jan4.getUTCDay() || 7;
+  const mondayWeek1 = new Date(jan4);
+  mondayWeek1.setUTCDate(jan4.getUTCDate() - (dayNum - 1));
+
+  const monday = new Date(mondayWeek1);
+  monday.setUTCDate(mondayWeek1.getUTCDate() + (week - 1) * 7);
+  return monday; // UTC
+}
+
 function actualizarSeccionSemanalRDC(mapaDiarioRDC, fIni, fFin) {
-    let semanasData = {};
-    let iter = new Date(fIni);
-    
-    // Recorremos el ciclo día a día sumando los valores del mapa RDC
-    while(iter <= fFin) {
-        const numSem = getWeekNumber(iter);
-        const anio = iter.getFullYear();
-        const key = `S${numSem}-${anio}`;
-        const diaStr = iter.toISOString().split('T')[0];
-        
-        if(!semanasData[key]) {
-            semanasData[key] = { num: numSem, suma: 0, inicio: new Date(iter), fin: new Date(iter) };
-        }
-        
-        // Aquí sumamos el valor que viene de tu estrategia RDC
-        semanasData[key].suma += (mapaDiarioRDC[diaStr] || 0);
-        semanasData[key].fin = new Date(iter);
-        iter.setDate(iter.getDate() + 1);
+  let semanasData = {};
+  let iter = new Date(fIni);
+
+  // Recorremos el ciclo día a día sumando los valores del mapa RDC
+  while (iter <= fFin) {
+    const { isoYear, week } = getISOWeekInfo(iter);
+    const key = `${isoYear}-W${String(week).padStart(2, "0")}`;
+
+    const diaStr = iter.toISOString().split('T')[0];
+
+    if (!semanasData[key]) {
+      semanasData[key] = { num: week, isoYear, suma: 0 };
     }
 
-    const cuerpo = document.getElementById('cuerpoTablaSemanal');
-    cuerpo.innerHTML = ""; 
-    exportDataSemanal = []; // Limpiamos para el nuevo Excel
-    
-    let labelsS = [], dataS = [], totalS = 0;
-    const listaSemanas = Object.values(semanasData).sort((a,b) => a.inicio - b.inicio);
+    // Contabilidad: IGUAL que antes (suma diaria dentro del ciclo)
+    semanasData[key].suma += (mapaDiarioRDC[diaStr] || 0);
 
-    listaSemanas.forEach(s => {
-        const val = Math.round(s.suma);
-        totalS += val;
-        labelsS.push(s.num);
-        dataS.push(val);
-        const fechas = `${formatDate(s.inicio)} - ${formatDate(s.fin)}`;
-        
-        cuerpo.innerHTML += `
-            <tr>
-                <td style="font-weight:bold; color:#1e3a8a">Semana ${s.num}</td>
-                <td>${fechas}</td>
-                <td class="col-ajustada">${fmtNum(val)} m³/ha</td>
-            </tr>`;
-            
-        exportDataSemanal.push({ "Semana": s.num, "Fechas": fechas, "Riego RDC (m3/ha)": val });
-    });
+    iter.setDate(iter.getDate() + 1);
+  }
 
-    document.getElementById('totalSemanalSuma').innerText = fmtNum(totalS) + " m³/ha";
-    document.getElementById('seccionSemanal').style.display = "block";
+  const cuerpo = document.getElementById('cuerpoTablaSemanal');
+  cuerpo.innerHTML = "";
+  exportDataSemanal = [];
 
-    // Actualizamos la gráfica de la Sección 3
-    if(miGraficaSemana) miGraficaSemana.destroy();
-    miGraficaSemana = new Chart(document.getElementById('graficaSemanal').getContext('2d'), {
-        type: 'line',
-        data: {
-            labels: labelsS,
-            datasets: [{
-                label: 'Planificación Semanal RDC (m³/ha)',
-                data: dataS,
-                borderColor: '#ca8a04',
-                backgroundColor: 'rgba(202, 138, 4, 0.1)',
-                fill: true,
-                tension: 0.4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                datalabels: {
-                    display: true,
-                    align: 'top',
-                    font: { weight: 'bold', size: 10 },
-                    formatter: (val) => val > 0 ? fmtNum(val) : ''
-                }
-            },
-            scales: {
-                y: { beginAtZero: true, grid: { color: '#f1f5f9' } },
-                x: { grid: { display: false } }
-            }
+  let labelsS = [], dataS = [], totalS = 0;
+
+  // Orden ISO correcto: año ISO y nº semana
+  const listaSemanas = Object.values(semanasData).sort((a, b) =>
+    a.isoYear !== b.isoYear ? a.isoYear - b.isoYear : a.num - b.num
+  );
+
+  listaSemanas.forEach(s => {
+    const val = Math.round(s.suma);
+    totalS += val;
+    labelsS.push(s.num);
+    dataS.push(val);
+
+    // Etiqueta: SIEMPRE lunes-domingo ISO (no recortada a días del ciclo)
+    const mondayUTC = getISOMondayOfWeek(s.isoYear, s.num);
+    const sundayUTC = new Date(mondayUTC);
+    sundayUTC.setUTCDate(mondayUTC.getUTCDate() + 6);
+
+    // Convertimos a Date "local" para reutilizar tu formatDate sin tocarla
+    const mondayLocal = new Date(mondayUTC.getUTCFullYear(), mondayUTC.getUTCMonth(), mondayUTC.getUTCDate());
+    const sundayLocal = new Date(sundayUTC.getUTCFullYear(), sundayUTC.getUTCMonth(), sundayUTC.getUTCDate());
+
+    const fechas = `${formatDate(mondayLocal)} - ${formatDate(sundayLocal)}`;
+
+    cuerpo.innerHTML += `
+      <tr>
+        <td style="font-weight:bold; color:#1e3a8a">Semana ${s.num}</td>
+        <td>${fechas}</td>
+        <td class="col-ajustada">${fmtNum(val)} m³/ha</td>
+      </tr>`;
+
+    exportDataSemanal.push({ "Semana": s.num, "Fechas": fechas, "Riego RDC (m3/ha)": val });
+  });
+
+  document.getElementById('totalSemanalSuma').innerText = fmtNum(totalS) + " m³/ha";
+  document.getElementById('seccionSemanal').style.display = "block";
+
+  // Actualizamos la gráfica de la Sección 3
+  if (miGraficaSemana) miGraficaSemana.destroy();
+  miGraficaSemana = new Chart(document.getElementById('graficaSemanal').getContext('2d'), {
+    type: 'line',
+    data: {
+      labels: labelsS,
+      datasets: [{
+        label: 'Planificación Semanal RDC (m³/ha)',
+        data: dataS,
+        borderColor: '#ca8a04',
+        backgroundColor: 'rgba(202, 138, 4, 0.1)',
+        fill: true,
+        tension: 0.4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        datalabels: {
+          display: true,
+          align: 'top',
+          font: { weight: 'bold', size: 10 },
+          formatter: (val) => val > 0 ? fmtNum(val) : ''
         }
-    });
+      },
+      scales: {
+        y: { beginAtZero: true, grid: { color: '#f1f5f9' } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
 }
 
 function descargarExcel() {
