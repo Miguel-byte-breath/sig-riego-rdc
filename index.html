@@ -366,11 +366,21 @@ async function generarPlanOro() {
             sumaP += m.pMm; sumaPe += m.peMm;
             m.m3AsignadoFinal = m3Asignado;
 
-            // --- CÁLCULO QUIRÚRGICO RDC ---
-            const todosInputsRDC = document.querySelectorAll('.rdc-input');
-            const pctRDC = todosInputsRDC[index] ? (parseFloat(todosInputsRDC[index].value) || 0) / 100 : 1;
-            const valorRDC = m.nhn_m3 * pctRDC;
-            sumaTotalRDC += valorRDC;
+           // --- CÁLCULO QUIRÚRGICO RDC (capado 0..100% para no superar NHn) ---
+const todosInputsRDC = document.querySelectorAll('.rdc-input');
+
+let pctRDC = 1; // por defecto 100%
+if (todosInputsRDC[index]) {
+  const rawPct = parseFloat(todosInputsRDC[index].value);
+  pctRDC = Number.isFinite(rawPct) ? (rawPct / 100) : 1; // si está vacío/NaN -> 100%
+}
+
+// Capar: 0%..100%
+pctRDC = Math.max(0, Math.min(1, pctRDC));
+
+const valorRDC = m.nhn_m3 * pctRDC;
+sumaTotalRDC += valorRDC;
+
             
             labels.push(m.etiqueta);
             dataPe.push(Math.round(m.peMm * 10));
