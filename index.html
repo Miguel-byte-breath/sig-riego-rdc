@@ -325,6 +325,8 @@ async function generarPlanOro() {
                 medias[m].count++; 
             }
         });
+window.mediasCache = medias;
+window.cultivoIdxCache = document.getElementById('selectCultivo').value;
 
         let mesesCiclo = [], sumaNHn = 0, iter = new Date(fIni.getFullYear(), fIni.getMonth(), 1);
         
@@ -713,6 +715,133 @@ const valorRDC = m.nhn_m3 * pct;
     // 3. Llamamos a la parte semanal
     actualizarSeccionSemanalRDC(mapaDiarioRDC, fIni, fFin);
 }
+function construirMesesCicloDesdeCache() {
+  const cultivo = cultivosData[document.getElementById('selectCultivo').value];
+  const fIni = new Date(document.getElementById('cicloIni').value);
+  const fFin = new Date(document.getElementById('cicloFin').value);
+
+  const medias = window.mediasCache;
+  if (!medias || !cultivo || !fIni || !fFin) return null;
+
+  let mesesCiclo = [];
+  let iter = new Date(fIni.getFullYear(), fIni.getMonth(), 1);
+
+  while (iter <= fFin) {
+    const mIdx = iter.getMonth();
+    const anio = iter.getFullYear();
+
+    const diasMesTotal = new Date(anio, mIdx + 1, 0).getDate();
+    const mesIni = new Date(anio, mIdx, 1);
+    const mesFin = new Date(anio, mIdx, diasMesTotal);
+
+    // Tramo activo dentro del mes
+    const rIni = new Date(Math.max(mesIni.getTime(), fIni.getTime()));
+    const rFin = new Date(Math.min(mesFin.getTime(), fFin.getTime()));
+    const nDiasActivos = Math.max(0, Math.floor((rFin - rIni) / 86400000) + 1);
+
+    if (nDiasActivos > 0) {
+      const idxMedias = mIdx + 1; // 1..12
+
+      const etoMensualAvg = medias[idxMedias].count > 0
+        ? (medias[idxMedias].sumEto / medias[idxMedias].count)
+        : 0;
+
+      const pMensualAvg = medias[idxMedias].count > 0
+        ? (medias[idxMedias].sumP / medias[idxMedias].count)
+        : 0;
+
+      const etoDiaria = etoMensualAvg / diasMesTotal;
+      const kc = cultivo.kc[idxMedias] || 0;
+
+      const etcDiaria = etoDiaria * kc;
+      const etcMesTotal = etcDiaria * nDiasActivos;
+
+      // P efectiva mensual (SCS simplificada) y prorrateo a días activos
+      let peMensualTotal = (pMensualAvg < 70)
+        ? (0.6 * pMensualAvg) - 10
+        : (0.8 * pMensualAvg) - 24;
+
+      if (peMensualTotal < 0) peMensualTotal = 0;
+
+      const peActiva = (peMensualTotal / diasMesTotal) * nDiasActivos;
+      const nhn_m3 = Math.max(0, etcMesTotal - peActiva) * 10;
+
+      const etiquetaBonita = `${nombresMesesCortos[mIdx]}-${String(anio).slice(-2)}`;
+
+      mesesCiclo.push({
+        etiqueta: etiquetaBonita,
+        mesNum: mIdx + 1,
+        anio: anio,
+        diasActivos: nDiasActivos,
+        etoDiaria: etoDiaria,
+        kc: kc,
+        etcMm: etcMesTotal,
+        pMm: pMensualAvg,
+        peMm: peActiva,
+        nhn_m3: nhn_m3
+      });
+    }
+
+    iter.setMonth(iter.getMonth() + 1);
+  }
+
+  return mesesCiclo;
+}
+function regenerarPanelRDC(mesesNuevos) {
+  // 1) Guardar % actuales por clave "YYYY-MM" usando el cache actual
+  const actuales = {};
+  const inputsAnt = document.querySelectorAll('.rdc-input');
+
+  if (window.mesesTrabajoCache && inputsAnt.length) {
+    inputsAnt.forEach((inp, i) => {
+      const m = window.mesesTrabajoCache[i];
+      if (!m) return;
+      const key = `${m.anio}-${String(m.mesNum).padStart(2, '0')}`;
+      const v = parseFloat(inp.value);
+      if (Number.isFinite(v)) actuales[key] = v;
+    });
+  }
+
+  // 2) Renderizar nuevos controles
+  renderizarControlesRDC(mesesNuevos);
+
+  // 3) Reaplicar valores donde coincida el mes
+  const inputsNuev = document.querySelectorAll('.rdc-input');
+  inputsNuev.forEach((inp, i) => {
+    const m = mesesNuevos[i];
+    if (!m) return;
+    const key = `${m.anio}-${String(m.mesNum).padStart(2, '0')}`;
+    if (actuales[key] !== undefined) inp.value = actuales[key];
+  });
+
+  // 4) Aviso de cambios pendientes (no recalculamos hasta pulsar el botón)
+  const aviso = document.getElementById('avisoRecursos');
+  if (aviso) {
+    aviso.innerHTML = `🟡 Fechas/cultivo cambiados: revisa % y pulsa "Actualizar RDC"`;
+    aviso.style.color = "#ca8a04";
+  }
+}
+function onCambioFechasOCultivo() {
+  // Solo si ya tenemos medias cacheadas (es decir, ya se hizo un cálculo AEMET al menos una vez)
+  if (!window.mediasCache || !cultivosData?.length) return;
+
+  const mesesNuevos = construirMesesCicloDesdeCache();
+  if (!mesesNuevos) return;
+
+  // Actualiza el cache de trabajo para que el panel y renderizarConCache usen lo nuevo
+  window.mesesTrabajoCache = mesesNuevos;
+
+  // Regenera panel RDC (mantiene % por mes)
+  regenerarPanelRDC(mesesNuevos);
+
+  // Nota: NO llamo a renderizarConCache() para respetar tu botón "Actualizar RDC"
+  // Si quisieras que recalculase automáticamente al cambiar fechas, descomenta:
+  // renderizarConCache();
+}
+
+document.getElementById('cicloIni')?.addEventListener('change', onCambioFechasOCultivo);
+document.getElementById('cicloFin')?.addEventListener('change', onCambioFechasOCultivo);
+document.getElementById('selectCultivo')?.addEventListener('change', onCambioFechasOCultivo);
 
 </script>
 </body>
