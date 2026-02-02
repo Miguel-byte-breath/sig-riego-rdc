@@ -566,7 +566,7 @@ function renderizarControlesRDC(meses) {
         contenedor.innerHTML += `
             <div class="rdc-mes-card">
                 <div style="font-size: 0.7rem; font-weight: 800; color: #92400e; margin-bottom: 5px;">${m.etiqueta.toUpperCase()}</div>
-                <input type="number" class="rdc-input" data-idx="${i}" value="100" min="0" max="150"
+                <input type="number" class="rdc-input" data-idx="${i}" value="100" min="0" max="100"
                     style="width: 55px; border: 1px solid #d1d5db; border-radius: 4px; padding: 4px; text-align: center; font-weight: 700;">
                 <span style="font-size: 0.75rem; font-weight: 600; color: #64748b;">%</span>
             </div>`;
@@ -602,8 +602,15 @@ function renderizarConCache(nuevosMeses = null) {
     exportDataMensual = [];
 
     meses.forEach((m, i) => {
-        const pct = inputs[i] ? (parseFloat(inputs[i].value) || 0) / 100 : 1;
-        const valorRDC = m.nhn_m3 * pct;
+        let pct = 1; // 100% por defecto
+if (inputs[i]) {
+  const rawPct = parseFloat(inputs[i].value);
+  pct = Number.isFinite(rawPct) ? (rawPct / 100) : 1; // vacío/NaN -> 100%
+}
+pct = Math.max(0, Math.min(1, pct)); // 0..1
+
+const valorRDC = m.nhn_m3 * pct;
+
         const asigAmet = sumaNHnTotal > 0 ? (m.nhn_m3 / sumaNHnTotal) * volV : 0;
         totalRDC += valorRDC;
         
