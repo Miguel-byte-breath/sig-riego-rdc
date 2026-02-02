@@ -82,7 +82,7 @@ El sistema permite definir una estrategia de ajuste sobre las necesidades netas:
 La aplicación de cambios se realiza explícitamente mediante el botón "Actualizar".
 ### Nota técnica sobre coeficientes de cultivo y dotaciones reales
 
-- $K_c$ representa la **demanda potencial** del cultivo, adaptada a **riego localizado** (con evaporación del suelo reducida, i.e. `$K_e$` bajo).
+- $K_c$ representa la **demanda potencial** del cultivo, adaptada a **riego localizado** (con evaporación del suelo reducida, i.e. $K_e$ bajo).
 - **RDC** aplica la **restricción real de dotación** (gestión del recurso), ajustando el volumen respecto a las necesidades netas calculadas
 
 ---
