@@ -1,61 +1,178 @@
-# 🌾 S.I.G. Riego Pro v1.0 (API Connect)
+🌾 S.I.G. Riego Pro v1.1 (API Connect)
 
-**Sistema de Información Geográfica para la Gestión Integral de Recursos Hídricos.** Una herramienta avanzada de ingeniería agronómica que automatiza el balance hídrico mensual y semanal mediante la conexión directa y resiliente con los servicios de **AEMET OpenData**.
+Sistema de Información Geográfica para la Gestión Integral de Recursos Hídricos.
+Herramienta avanzada de ingeniería agronómica aplicada para el cálculo automático del balance hídrico mensual y la planificación semanal de riego, incorporando estrategias de Riego Deficitario Controlado (RDC) y redistribución térmica diaria, mediante conexión directa y resiliente con AEMET OpenData.
+
+🚀 Evolución del Sistema (v1.1)
+
+La versión 1.1 amplía la lógica clásica de balance hídrico incorporando:
+
+Ajuste estratégico de riego mediante RDC (% sobre $NH_n$).
+
+Programación semanal basada en semanas ISO reales.
+
+Redistribución térmica diaria del riego dentro de cada mes.
+
+Exportación profesional completa (mensual y semanal).
+
+El sistema mantiene su objetivo principal: robustez climática, coherencia agronómica y aplicabilidad operativa en campo.
+
+📡 Automatización y Resiliencia vía API AEMET
+📍 Validación automática de estaciones meteorológicas
+
+A partir de las coordenadas de la parcela (latitud / longitud), el sistema ejecuta:
+
+Búsqueda por proximidad:
+Identificación de estaciones cercanas mediante cálculo de distancia euclidiana en coordenadas decimales.
+
+Validación técnica de datos:
+Verificación directa con la API de AEMET.
+Si la estación más próxima no dispone de datos válidos, se activa un bucle de resiliencia que evalúa automáticamente las siguientes estaciones más cercanas hasta encontrar una fuente fiable.
+
+🛰️ Motor de Estabilidad Climática (Media Trienal)
+
+Para evitar sesgos derivados de años anómalos, el sistema implementa un enfoque de climatología media representativa.
+
+📅 Período de análisis
+
+Se utilizan los últimos 36 meses completos (3 años naturales).
+
+El cálculo se basa en un mes climático medio, evitando depender de un solo año.
+
+🛠️ Gestión de datos incompletos
+
+Los meses sin datos no bloquean el proceso.
+
+Las medias se calculan únicamente con los registros válidos disponibles.
+
+Se filtran valores erróneos o negativos.
+
+Este enfoque garantiza continuidad de cálculo y estabilidad del diseño de riego.
+
+🛠️ Funcionalidades Core
+1️⃣ Balance Hídrico Agronómico Mensual (Sección 2)
+
+Cálculo técnico completo de las necesidades hídricas del cultivo:
+
+Evapotranspiración de referencia ($ET_0$):
+Obtenida de AEMET y promediada mediante climatología trienal.
+
+Coeficiente de cultivo ($K_c$):
+Definido por cultivo y etapa fenológica.
+
+Evapotranspiración del cultivo ($ET_c$):
+Calculada como:
+$ET_c = ET_0 \cdot K_c$
+
+Precipitación efectiva ($P_e$):
+Estimada mediante metodología USDA (SCS), ajustada a la lluvia realmente aprovechable.
+
+Necesidades hídricas netas ($NH_n$):
+Déficit hídrico mensual expresado en $m^3/ha$.
+
+2️⃣ Estrategia de Riego Deficitario Controlado (RDC)
+
+El sistema permite definir una estrategia de ajuste sobre las necesidades netas:
+
+Introducción de porcentajes mensuales sobre $NH_n$.
+
+Cálculo automático del volumen RDC mensual en $m^3/ha$.
+
+Limitación automática:
+
+0
+≤
+𝑅
+𝐷
+𝐶
+≤
+100
+%
+⋅
+𝑁
+𝐻
+𝑛
+0≤RDC≤100%⋅NH
+n
+	​
 
 
+Control visual de:
 
-## 🚀 Innovación: Automatización y Resiliencia vía API
+Volumen total planificado RDC.
 
-Esta versión 1.0 elimina la dependencia de archivos externos (JSON manuales), integrando un motor de obtención de datos climáticos en tiempo real. 
+Recursos disponibles y posibles excedentes o déficits.
 
-### 📡 Validación Automática de Estaciones
-Al introducir las coordenadas (Latitud/Longitud), el sistema inicia un protocolo de verificación técnica:
-1.  **Cercanía Pitagórica:** Identifica la estación más próxima mediante el cálculo de **distancia euclidiana** entre coordenadas decimales, garantizando una respuesta inmediata del motor de búsqueda.
-2.  **Validación Técnica:** Conecta con la infraestructura de AEMET para confirmar la disponibilidad de datos. Si la estación principal carece de registros o está fuera de servicio, el sistema activa un **bucle de resiliencia** que itera automáticamente entre las 5 estaciones más cercanas hasta validar una fuente fiable.
+La aplicación de cambios se realiza explícitamente mediante el botón “Actualizar”, garantizando control consciente del usuario técnico.
 
+3️⃣ Programación Semanal de Riego Neto (Sección 3)
 
+Conversión del plan mensual RDC en una planificación semanal operativa:
 
-## 🛰️ Motor de Estabilidad Climática (Media Trienal)
+Uso de semanas ISO reales (lunes–domingo).
 
-Para garantizar un diseño de riego robusto frente al cambio climático y anomalías meteorológicas puntuales, el software implementa una lógica de **procesamiento histórico profundo**:
+Las semanas parciales del ciclo solo contabilizan los días incluidos entre las fechas de inicio y fin del cultivo.
 
-### 📅 Período de Análisis: 36 Meses
-El sistema solicita mediante el endpoint de la API los datos de los **últimos 3 años naturales completos**. El software no utiliza un solo año de forma aislada para evitar sesgos por años extremadamente secos o húmedos.
+Cálculo del riego neto semanal a partir de la suma de los valores diarios.
 
+Representación gráfica mediante curva semanal acumulada.
 
+🌡️ Redistribución Térmica Diaria del RDC (Opcional)
 
-### 🛠️ Tratamiento de Datos Ausentes (Data Integrity)
-En el sector agrícola, es común que las estaciones sufran fallos técnicos temporales. **Riego Pro v1.0** gestiona estas lagunas de forma inteligente:
-* **Contabilización Dinámica:** Si un mes concreto falta en uno de los tres años, el sistema calcula la media aritmética dividiendo únicamente por los registros válidos encontrados (`medias[m].count++`).
-* **Filtrado de Nulos:** Se descartan automáticamente valores negativos o erróneos, asegurando que el **"Mes Típico Medio"** sea matemáticamente coherente.
-* **Garantía de Cálculo:** El proceso nunca se detiene por falta de un dato mensual; el algoritmo se auto-ajusta para ofrecer la mejor aproximación posible con la serie histórica disponible.
+Funcionalidad avanzada orientada a mejorar la coherencia fisiológica del riego dentro de cada mes.
 
-## 🛠️ Funcionalidades Core
+🔍 Principio de funcionamiento
 
-### 1. Balance Hídrico Agronómico
-* **Evapotranspiración del Cultivo ($ET_c$):** Determinada por la $ET_o$ local y coeficientes $K_c$ específicos por etapa fenológica.
-* **Precipitación Efectiva ($P_e$):** Cálculo mediante el método de la **USDA** (SCS), optimizando el aprovechamiento real del agua de lluvia.
-* **Necesidades Netas ($NH_n$):** Cálculo preciso del déficit hídrico en $m^3/ha$.
+El RDC mensual se reparte diariamente, no por semanas fijas.
 
+Se aplica un gradiente diario lineal:
 
+Ascendente si la temperatura media mensual aumenta respecto al mes anterior.
 
-### 2. Programación Semanal Operativa
-* Desglose operativo del plan mensual en semanas naturales.
-* Gráfico de líneas dinámico para la visualización de la demanda hídrica a lo largo del ciclo.
+Descendente si la temperatura media mensual disminuye.
 
-## 📊 Visualización y Exportación
-* **Reportes Dinámicos:** Gráficos comparativos mediante **Chart.js** (Lluvia vs. Necesidades vs. Asignación).
-* **Exportación Profesional:** Generación de archivos **.xlsx (Excel)** detallados para planes de riego y auditorías de gestión de recursos.
+Intensidad del ajuste: ±10 % respecto al promedio diario.
 
-## 💻 Stack Tecnológico
-* **APIs:** AEMET OpenData (REST API).
-* **Frontend:** Vanilla JavaScript (ES6+), CSS3 Premium UI.
-* **Librerías:** Chart.js, SheetJS, Chartjs-plugin-datalabels.
+El volumen mensual total se conserva exactamente mediante normalización matemática.
 
----
+🎯 Beneficios agronómicos
 
-## ⚙️ Configuración del Desarrollador
-Para activar el sistema, es necesario integrar una API Key válida en la sección de configuración global del script:
+Evita repartos semanales artificialmente planos.
 
-```javascript
-const API_KEY = "TU_AEMET_API_KEY";
+Introduce sensibilidad térmica sin aumentar la complejidad operativa.
+
+Mejora la representatividad fisiológica del riego aplicado.
+
+La redistribución térmica se activa o desactiva mediante un checkbox explícito, y se aplica junto con el botón “Actualizar”.
+
+📊 Visualización y Exportación
+
+Gráficos dinámicos con Chart.js:
+
+Comparativa climática y de necesidades ($P_e$, $NH_n$, asignación).
+
+Curva de planificación semanal.
+
+Exportación profesional a Excel (.xlsx):
+
+Balance mensual completo (todas las variables).
+
+Programación semanal detallada (semana, fechas, volumen).
+
+Diseñado para planificación técnica, auditorías y justificación documental.
+
+💻 Stack Tecnológico
+
+Datos climáticos: AEMET OpenData (REST API).
+
+Frontend: HTML5 + Vanilla JavaScript (ES6+).
+
+Visualización: Chart.js, chartjs-plugin-datalabels.
+
+Exportación: SheetJS (xlsx).
+
+Estilo: CSS3 con interfaz técnica premium.
+
+⚙️ Configuración del Desarrollador
+
+Para activar el sistema es necesario configurar una API Key válida de AEMET:
