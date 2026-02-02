@@ -315,19 +315,28 @@ async function generarPlanOro() {
         const fIni = new Date(document.getElementById('cicloIni').value);
         const fFin = new Date(document.getElementById('cicloFin').value);
 
-        const medias = Array(13).fill(0).map(() => ({ sumEto: 0, sumP: 0, count: 0 }));
+   const medias = Array(13).fill(0).map(() => ({ sumEto: 0, sumP: 0, sumTm: 0, count: 0 }));
+
         
         aemet.forEach(d => {
-            const m = parseInt(d.fecha.split('-')[1]);
-            let valEto = parseFloat(String(d.eto_mes || d.evap_mes || d.e || "0").replace(',','.'));
-            let valP = parseFloat(String(d.p_mes || d.precipitacion || "0").replace(',','.')); 
-            
-            if(m < 13) { 
-                if(valEto >= 0) medias[m].sumEto += valEto;
-                if(valP >= 0) medias[m].sumP += valP;
-                medias[m].count++; 
-            }
-        });
+    const m = parseInt(d.fecha.split('-')[1]);
+
+    let valEto = parseFloat(String(d.eto_mes || d.evap_mes || d.e || "0").replace(',','.'));
+    let valP   = parseFloat(String(d.p_mes || d.precipitacion || "0").replace(',','.'));
+
+    // Temperatura media mensual AEMET (ej: "tm_mes": "20.2")
+    let valTm  = parseFloat(String(d.tm_mes || d.tm || "NaN").replace(',','.'));
+
+    if (m < 13) {
+        if (valEto >= 0) medias[m].sumEto += valEto;
+        if (valP >= 0)   medias[m].sumP   += valP;
+
+        if (Number.isFinite(valTm)) medias[m].sumTm += valTm;
+
+        medias[m].count++;
+    }
+});
+
 window.mediasCache = medias;
 window.cultivoIdxCache = document.getElementById('selectCultivo').value;
 
