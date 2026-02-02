@@ -710,17 +710,55 @@ const valorRDC = m.nhn_m3 * pct;
         const asigAmet = sumaNHnTotal > 0 ? (m.nhn_m3 / sumaNHnTotal) * volV : 0;
         totalRDC += valorRDC;
         
-        // Prorrateo diario para la Sección 3
-        const valorDiarioRDC = valorRDC / m.diasActivos;
-        let dIter = new Date(m.anio, m.mesNum - 1, 1);
-        let dFinMes = new Date(m.anio, m.mesNum, 0);
-        if(dIter < fIni) dIter = new Date(fIni); 
-        let limite = (dFinMes > fFin) ? fFin : dFinMes; 
-        
-        while(dIter <= limite) {
-            mapaDiarioRDC[dIter.toISOString().split('T')[0]] = valorDiarioRDC;
-            dIter.setDate(dIter.getDate() + 1);
-        }
+       // Prorrateo diario para la Sección 3 (uniforme o térmico)
+const usarTermica = !!document.getElementById('toggleRedistribTermica')?.checked;
+
+let dIter = new Date(m.anio, m.mesNum - 1, 1);
+let dFinMes = new Date(m.anio, m.mesNum, 0);
+if (dIter < fIni) dIter = new Date(fIni);
+let limite = (dFinMes > fFin) ? fFin : dFinMes;
+
+// Lista de días activos reales en el ciclo para este mes
+const diasActivos = [];
+let tmp = new Date(dIter);
+while (tmp <= limite) {
+  diasActivos.push(new Date(tmp));
+  tmp.setDate(tmp.getDate() + 1);
+}
+
+if (diasActivos.length > 0) {
+  // Dirección según tm mensual vs mes anterior (climatología 36 meses)
+  let direccion = null;
+  if (usarTermica) {
+    const mesIdx = m.mesNum; // 1..12
+    const prevMesIdx = (mesIdx === 1) ? 12 : (mesIdx - 1);
+
+    const tmThis = m.tmMensualAvg;
+    const tmPrev = (window.mediasCache && window.mediasCache[prevMesIdx]?.count > 0)
+      ? (window.mediasCache[prevMesIdx].sumTm / window.mediasCache[prevMesIdx].count)
+      : NaN;
+
+    if (Number.isFinite(tmThis) && Number.isFinite(tmPrev)) {
+      if (tmThis > tmPrev) direccion = 'asc';
+      else if (tmThis < tmPrev) direccion = 'desc';
+    }
+  }
+
+  if (!usarTermica || !direccion) {
+    // Uniforme (como hasta ahora)
+    const valorDiario = valorRDC / diasActivos.length;
+    diasActivos.forEach(dt => {
+      mapaDiarioRDC[dt.toISOString().split('T')[0]] = valorDiario;
+    });
+  } else {
+    // Térmico: gradiente diario lineal (±10%), normalizado => conserva RDC mensual
+    const pesos = pesosLinealesNormalizados(diasActivos.length, direccion, 0.10);
+    diasActivos.forEach((dt, idx) => {
+      mapaDiarioRDC[dt.toISOString().split('T')[0]] = valorRDC * pesos[idx];
+    });
+  }
+}
+
 
         // Pintamos la fila con el nuevo valor RDC
         cuerpo.innerHTML += `<tr>
