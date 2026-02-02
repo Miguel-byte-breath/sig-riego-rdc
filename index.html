@@ -532,7 +532,15 @@ function actualizarSeccionSemanalRDC(mapaDiarioRDC, fIni, fFin) {
   labelsS.push(s.num);
   dataS.push(val);
 
-  const fechas = `${formatDate(s.inicio)} - ${formatDate(s.fin)}`; // o el rango ISO, según tu versión
+  const mondayUTC = getISOMondayOfWeek(s.isoYear, s.num);
+const sundayUTC = new Date(mondayUTC);
+sundayUTC.setUTCDate(mondayUTC.getUTCDate() + 6);
+
+const mondayLocal = new Date(mondayUTC.getUTCFullYear(), mondayUTC.getUTCMonth(), mondayUTC.getUTCDate());
+const sundayLocal = new Date(sundayUTC.getUTCFullYear(), sundayUTC.getUTCMonth(), sundayUTC.getUTCDate());
+
+const fechas = `${formatDate(mondayLocal)} - ${formatDate(sundayLocal)}`;
+
 
   cuerpo.innerHTML += `
     <tr>
