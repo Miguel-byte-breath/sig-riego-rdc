@@ -346,7 +346,7 @@ window.cultivoIdxCache = document.getElementById('selectCultivo').value;
             const mIdx = iter.getMonth(), anio = iter.getFullYear();
             const diasMesTotal = new Date(anio, mIdx + 1, 0).getDate();
             const rIni = new Date(Math.max(iter, fIni)), rFin = new Date(Math.min(new Date(anio, mIdx, diasMesTotal), fFin));
-            const nDiasActivos = Math.max(0, (rFin - rIni) / (86400000) + 1);
+            const nDiasActivos = Math.max(0, Math.round((rFin - rIni) / 86400000) + 1);
 
             if (nDiasActivos > 0) {
                 const etoMensualAvg = medias[mIdx+1].count > 0 ? (medias[mIdx+1].sumEto / medias[mIdx+1].count) : 0;
