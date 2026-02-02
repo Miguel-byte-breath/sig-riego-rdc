@@ -779,6 +779,10 @@ function construirMesesCicloDesdeCache() {
       const pMensualAvg = medias[idxMedias].count > 0
         ? (medias[idxMedias].sumP / medias[idxMedias].count)
         : 0;
+        
+      const tmMensualAvg = medias[idxMedias].count > 0
+        ? (medias[idxMedias].sumTm / medias[idxMedias].count)
+        : NaN;
 
       const etoDiaria = etoMensualAvg / diasMesTotal;
       const kc = cultivo.kc[idxMedias] || 0;
