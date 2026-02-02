@@ -80,7 +80,10 @@ El sistema permite definir una estrategia de ajuste sobre las necesidades netas:
   - Recursos disponibles y posibles excedentes o déficits.
 
 La aplicación de cambios se realiza explícitamente mediante el botón "Actualizar".
+### Nota técnica sobre coeficientes de cultivo y dotaciones reales
+“$K_c$ representa demanda potencial adaptada a riego localizado (bajo $K_e$)”
 
+“RDC aplica la restricción real de dotación (gestión)”.
 ---
 
 ### 3. Programación Semanal de Riego Neto (Sección 3)
