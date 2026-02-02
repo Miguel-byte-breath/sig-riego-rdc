@@ -139,8 +139,6 @@
   <div id="avisoRecursos" style="font-weight: 700; font-size: 0.9rem;"></div>
 </div>
 
-
-                <div id="avisoRecursos" style="font-weight: 700; font-size: 0.9rem;"></div>
             </div>
         </div>
                     <tr>
@@ -527,38 +525,29 @@ function actualizarSeccionSemanalRDC(mapaDiarioRDC, fIni, fFin) {
     a.isoYear !== b.isoYear ? a.isoYear - b.isoYear : a.num - b.num
   );
 
-  listaSemanas.forEach(s => {
-    const val = Math.round(s.suma);
-    totalS += val;
-    labelsS.push(s.num);
-    dataS.push(val);
+ listaSemanas.forEach(s => {
+  const val = Math.round(s.suma);
+  totalS += val;
 
-    // Etiqueta: SIEMPRE lunes-domingo ISO (no recortada a días del ciclo)
-    const mondayUTC = getISOMondayOfWeek(s.isoYear, s.num);
-    const sundayUTC = new Date(mondayUTC);
-    sundayUTC.setUTCDate(mondayUTC.getUTCDate() + 6);
+  labelsS.push(s.num);
+  dataS.push(val);
 
-    // Convertimos a Date "local" para reutilizar tu formatDate sin tocarla
-    const mondayLocal = new Date(mondayUTC.getUTCFullYear(), mondayUTC.getUTCMonth(), mondayUTC.getUTCDate());
-    const sundayLocal = new Date(sundayUTC.getUTCFullYear(), sundayUTC.getUTCMonth(), sundayUTC.getUTCDate());
+  const fechas = `${formatDate(s.inicio)} - ${formatDate(s.fin)}`; // o el rango ISO, según tu versión
 
-    const fechas = `${formatDate(mondayLocal)} - ${formatDate(sundayLocal)}`;
+  cuerpo.innerHTML += `
+    <tr>
+      <td style="font-weight:bold; color:#1e3a8a">${s.isoYear} Sem. ${String(s.num).padStart(2,'0')}</td>
+      <td>${fechas}</td>
+      <td class="col-ajustada">${fmtNum(val)} m³/ha</td>
+    </tr>`;
 
-    cuerpo.innerHTML += `
-      <tr>
-        <td style="font-weight:bold; color:#1e3a8a">${s.isoYear} Sem. ${String(s.num).padStart(2,'0')}</td>
-        <td>${fechas}</td>
-        <td class="col-ajustada">${fmtNum(val)} m³/ha</td>
-      </tr>`;
+  exportDataSemanal.push({
+    "Semana Año": `${s.isoYear} Sem. ${String(s.num).padStart(2,'0')}`,
+    "Fechas Aprox": fechas,
+    "Riego Neto Semanal (m3/ha)": val
+  });
+}); // ✅ único cierre del forEach
 
-    exportDataSemanal.push({
-  "Semana Año": `${s.isoYear}-W${String(s.num).padStart(2, "0")}`,
-  "Semana": s.num,
-  "Fechas Aprox": fechas,
-  "Riego Neto Semanal (m3/ha)": val
-});
-
-});
   document.getElementById('totalSemanalSuma').innerText = fmtNum(totalS) + " m³/ha";
   document.getElementById('seccionSemanal').style.display = "block";
 
