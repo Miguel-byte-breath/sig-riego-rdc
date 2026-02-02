@@ -698,47 +698,6 @@ const valorRDC = m.nhn_m3 * pct;
     actualizarSeccionSemanalRDC(mapaDiarioRDC, fIni, fFin);
 }
 
-// --- PIEZA 2: ACTUALIZACIÓN SEMANAL (Gráfica y Tabla 3) ---
-function actualizarSeccionSemanalRDC(mapaDiarioRDC, fIni, fFin) {
-    let semanasData = {};
-    let iter = new Date(fIni);
-    while(iter <= fFin) {
-        const numSem = getWeekNumber(iter);
-        const anio = iter.getFullYear();
-        const key = `S${numSem}-${anio}`;
-        const diaStr = iter.toISOString().split('T')[0];
-        if(!semanasData[key]) semanasData[key] = { num: numSem, suma: 0, inicio: new Date(iter), fin: new Date(iter) };
-        semanasData[key].suma += (mapaDiarioRDC[diaStr] || 0);
-        semanasData[key].fin = new Date(iter);
-        iter.setDate(iter.getDate() + 1);
-    }
-
-    const cuerpo = document.getElementById('cuerpoTablaSemanal');
-    cuerpo.innerHTML = ""; exportDataSemanal = [];
-    let labelsS = [], dataS = [], totalS = 0;
-    const listaSemanas = Object.values(semanasData).sort((a,b) => a.inicio - b.inicio);
-
-    listaSemanas.forEach(s => {
-        const val = Math.round(s.suma); totalS += val;
-        labelsS.push(s.num); dataS.push(val);
-        const fechas = `${formatDate(s.inicio)} - ${formatDate(s.fin)}`;
-        cuerpo.innerHTML += `<tr><td style="font-weight:bold;">Semana ${s.num}</td><td>${fechas}</td><td class="col-ajustada">${fmtNum(val)} m³/ha</td></tr>`;
-        exportDataSemanal.push({ "Semana": s.num, "Riego RDC": val });
-    });
-
-    document.getElementById('totalSemanalSuma').innerText = fmtNum(totalS) + " m³/ha";
-    document.getElementById('seccionSemanal').style.display = "block";
-
-    if(miGraficaSemana) miGraficaSemana.destroy();
-    miGraficaSemana = new Chart(document.getElementById('graficaSemanal').getContext('2d'), {
-        type: 'line',
-        data: {
-            labels: labelsS,
-            datasets: [{ label: 'Plan Semanal RDC', data: dataS, borderColor: '#ca8a04', backgroundColor: 'rgba(202,138,4,0.1)', fill: true, tension: 0.4 }]
-        },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { datalabels: { display: true, align: 'top', font: { weight: 'bold' }, formatter: Math.round } } }
-    });
-}
 </script>
 </body>
 </html>
