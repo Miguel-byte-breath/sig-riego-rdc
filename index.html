@@ -129,6 +129,12 @@
                 <div style="font-weight: 800;">
                     Total Planificado RDC: <span id="sumaRDC" style="color: #b45309; font-size: 1.2rem;">0</span> m³/ha
                 </div>
+                <div style="margin-top: 15px;">
+  <button class="btn btn-blue" style="width:100%" id="btnActualizarRDC" type="button">
+    🔄 Actualizar RDC
+  </button>
+</div>
+
                 <div id="avisoRecursos" style="font-weight: 700; font-size: 0.9rem;"></div>
             </div>
         </div>
@@ -609,11 +615,21 @@ function renderizarControlesRDC(meses) {
     });
 
     // Escuchador reactivo: Al cambiar un %, se actualiza la tabla mensual y la sección 3 semanal
-    document.querySelectorAll('.rdc-input').forEach(input => {
-        input.addEventListener('change', () => {
-            renderizarConCache(); 
-        });
-    });
+   // Marcar que hay cambios pendientes (sin recalcular)
+document.querySelectorAll('.rdc-input').forEach(input => {
+  input.addEventListener('input', () => {
+    const aviso = document.getElementById('avisoRecursos');
+    aviso.innerHTML = `🟡 Cambios pendientes (pulsa "Actualizar RDC")`;
+    aviso.style.color = "#ca8a04";
+  });
+});
+
+// Botón: recalcular cuando el usuario decida
+const btnAct = document.getElementById('btnActualizarRDC');
+if (btnAct) {
+  btnAct.onclick = () => renderizarConCache();
+}
+
 }
 // --- PIEZA 1: EL MOTOR DE RECÁLCULO (Sincroniza Tabla y Semanal) ---
 function renderizarConCache(nuevosMeses = null) {
