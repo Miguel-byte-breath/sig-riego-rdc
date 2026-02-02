@@ -132,6 +132,13 @@
   </button>
 </div>
 
+<div style="margin-top: 10px; display:flex; align-items:center; gap:10px;">
+  <input type="checkbox" id="toggleRedistribTermica" />
+  <label for="toggleRedistribTermica" style="font-weight:700; color:#92400e;">
+    Redistribución térmica diaria (±10%)
+  </label>
+</div>
+
 <div style="margin-top: 20px; border-top: 1px dashed #fcd34d; padding-top: 15px; display: flex; justify-content: space-between; align-items: center;">
   <div style="font-weight: 800;">
     Total Planificado RDC: <span id="sumaRDC" style="color: #b45309; font-size: 1.2rem;">0</span> m³/ha
@@ -221,6 +228,21 @@ function getWeekNumber(d) {
 
 function formatDate(d) {
     return `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}`;
+}
+function pesosLinealesNormalizados(n, direccion /* 'asc'|'desc' */, amp = 0.10) {
+  if (n <= 0) return [];
+  if (n === 1) return [1];
+
+  const factors = [];
+  for (let i = 0; i < n; i++) {
+    const t = i / (n - 1); // 0..1
+    const x = (direccion === 'desc') ? (1 - t) : t;
+    const f = (1 - amp) + (2 * amp) * x;  // de 1-amp a 1+amp
+    factors.push(f);
+  }
+
+  const sum = factors.reduce((a, b) => a + b, 0);
+  return factors.map(f => f / sum); // normaliza => suma 1
 }
 
 function aemetToDec(coord) {
