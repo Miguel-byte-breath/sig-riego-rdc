@@ -351,6 +351,10 @@ window.cultivoIdxCache = document.getElementById('selectCultivo').value;
             if (nDiasActivos > 0) {
                 const etoMensualAvg = medias[mIdx+1].count > 0 ? (medias[mIdx+1].sumEto / medias[mIdx+1].count) : 0;
                 const pMensualAvg = medias[mIdx+1].count > 0 ? (medias[mIdx+1].sumP / medias[mIdx+1].count) : 0;
+                const tmMensualAvg = medias[mIdx+1].count > 0
+  ? (medias[mIdx+1].sumTm / medias[mIdx+1].count)
+  : NaN;
+
 
                 const etoDiaria = etoMensualAvg / diasMesTotal;
                 const kc = cultivo.kc[mIdx+1] || 0;
@@ -368,7 +372,7 @@ window.cultivoIdxCache = document.getElementById('selectCultivo').value;
 
                 mesesCiclo.push({ 
                     etiqueta: etiquetaBonita, mesNum: mIdx+1, anio: anio, diasActivos: nDiasActivos,
-                    etoDiaria: etoDiaria, kc: kc, etcMm: etcMesTotal, pMm: pMensualAvg, peMm: peActiva, nhn_m3: nhn_m3 
+                    etoDiaria: etoDiaria, kc: kc, etcMm: etcMesTotal, pMm: pMensualAvg, peMm: peActiva, nhn_m3: nhn_m3, tmMensualAvg: tmMensualAvg 
                 });
             }
             iter.setMonth(iter.getMonth() + 1);
